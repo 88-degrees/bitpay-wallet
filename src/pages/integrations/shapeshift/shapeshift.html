@@ -2,30 +2,28 @@
   <ion-navbar [navbar-bg]="headerColor">
     <ion-title>
       <div [reveal-at-scroll-pos]="expandableHeader.headerHeight" [scrollArea]="scrollArea">
-        <img width="100" src="assets/img/shapeshift/logo-white-shapeshift.svg" alt="ShapeShift">
+        <img width="140" src="assets/img/shapeshift/logo-white-shapeshift.svg" alt="ShapeShift">
       </div>
     </ion-title>
     <ng-content select="[right]"></ng-content>
   </ion-navbar>
 </ion-header>
 
-<ion-content #scrollArea [fixed-scroll-bg-color]="headerColor" [ion-content-background-color]="headerColor">
+<ion-content #scrollArea [fixed-scroll-bg-color]="headerColor" no-bounce>
   <div class="wrapper">
     <expandable-header [scrollArea]="scrollArea" [fadeFactor]="5" [disableFade]="true" #expandableHeader>
       <ion-toolbar [navbar-bg]="headerColor" class="wide-header__title">
         <expandable-header-primary>
-          <img margin-left width="155" src="assets/img/shapeshift/logo-white-shapeshift.svg" alt="ShapeShift">
-          
+          <img margin-left width="155" (click)="update()" src="assets/img/shapeshift/logo-white-shapeshift.svg" alt="ShapeShift">
         </expandable-header-primary>
-        <ion-buttons end>
-          <button class="shift-button" *ngIf="accessToken" clear no-low-fee (click)="goTo('Shift')" [disabled]="disabled">
-            Shift
-            <ion-icon name="arrow-forward"></ion-icon>
+        <ion-buttons *ngIf="accessToken" end>
+          <button class="shift-button" (click)="goTo('Settings')">
+            <ion-icon name="settings"></ion-icon>
           </button>
         </ion-buttons>
       </ion-toolbar>
     </expandable-header>
-  
+
     <div class="container" *ngIf="!accessToken">
       <div class="center-header">
         <div>
@@ -62,8 +60,20 @@
         Shapeshift is temporally disabled for this device. You can try it on our Desktop versions.
       </div>
 
-      <ion-list>
-        <ion-item-divider>{{'Transactions' | translate}}
+      <div class="center-header" *ngIf="!shifts.data">
+        <h4 translate>Trade Crypto with ShapeShift</h4>
+        <button ion-button class="button-standard" (click)="goTo('Shift')" translate>
+          Get Started
+        </button>
+      </div>
+
+      <ion-list class="shift-history bp-list">
+        <button ion-item no-low-fee *ngIf="shifts.data" (click)="goTo('Shift')">
+          <ion-label>Shift</ion-label>
+          <ion-note item-end>{{ 'Choose Assets' | translate }}</ion-note>
+        </button>
+        <ion-item-divider *ngIf="shifts.data" class="shift-history-header">
+          {{'Transactions' | translate}}
           <ion-spinner item-end name="crescent" *ngIf="loading"></ion-spinner>
         </ion-item-divider>
         <button ion-item *ngFor="let item of (shifts.data | keys : 'date') | orderBy : ['-order']" (click)="openShiftModal(item.value)">
@@ -72,8 +82,11 @@
             <div class="status">
               <span class="assertive" *ngIf="item.value.status == 'failed'" translate>Failed</span>
               <span class="balanced" *ngIf="item.value.status == 'complete'" translate>Completed</span>
-              <span class="royal" *ngIf="item.value.status == 'received'" translate>Pending</span>
-              <span class="calm" *ngIf="item.value.status == 'no_deposits'" translate>Pending</span>
+              <span class="balanced" *ngIf="item.value.status == 'resolved'" translate>Resolved</span>
+              <span class="dark" *ngIf="item.value.status == 'received'" translate>Pending</span>
+              <span class="text-gray" *ngIf="item.value.status == 'no_deposits'" translate>Pending</span>
+              <span class="assertive" *ngIf="item.value.status == 'expired'" translate>Expired</span>
+              <span class="assertive" *ngIf="!item.value.status || item.value.status == 'error'" translate>Error</span>
             </div>
           </ion-label>
           <div item-content text-end>

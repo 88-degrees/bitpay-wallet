@@ -2,7 +2,6 @@ import { Component, ViewChild } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import {
   ModalController,
-  Navbar,
   NavController,
   NavParams,
   Slides
@@ -26,8 +25,8 @@ import { ProfileProvider } from '../../../providers/profile/profile';
 export class BackupGamePage {
   @ViewChild('gameSlides')
   gameSlides: Slides;
-  @ViewChild(Navbar)
-  navBar: Navbar;
+  @ViewChild('wideHeader')
+  wideHeader;
 
   public mnemonicWords: string[];
   public shuffledMnemonicWords;
@@ -58,7 +57,7 @@ export class BackupGamePage {
 
   ionViewDidLoad() {
     if (this.gameSlides) this.gameSlides.lockSwipes(true);
-    this.navBar.backButtonClick = () => {
+    this.wideHeader.navBar.backButtonClick = () => {
       if (this.customWords.length > 0) {
         this.clear();
       } else {
@@ -170,9 +169,10 @@ export class BackupGamePage {
     }
     this.profileProvider.setBackupGroupFlag(this.keyId);
     const opts = {
-      keyId: this.keyId
+      keyId: this.keyId,
+      showHidden: true
     };
-    const wallets = this.profileProvider.getWallets(opts);
+    const wallets = this.profileProvider.getWalletsFromGroup(opts);
     wallets.forEach(w => {
       this.profileProvider.setWalletBackup(w.credentials.walletId);
     });

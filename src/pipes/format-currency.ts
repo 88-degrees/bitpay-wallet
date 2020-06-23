@@ -22,10 +22,20 @@ export class FormatCurrencyPipe implements PipeTransform {
       amount,
       getPrecisionString(precision)
     );
-    const finalValue =
-      currencyCode.toUpperCase() === 'USD'
-        ? `$${numericValue}`
-        : `${numericValue} ${currencyCode}`;
+    const symbolMap = {
+      BRL: 'R$',
+      CAD: 'C$',
+      EUR: '€',
+      GBP: '£',
+      INR: '₹',
+      JPY: '¥',
+      PHP: '₱',
+      USD: '$'
+    };
+    const symbol = symbolMap[currencyCode.toUpperCase()];
+    const finalValue = symbol
+      ? `${symbol}${numericValue}`
+      : `${numericValue} ${currencyCode}`;
 
     return finalValue;
   }

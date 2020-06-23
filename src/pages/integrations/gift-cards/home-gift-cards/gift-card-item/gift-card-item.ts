@@ -1,12 +1,12 @@
 import {
   Component,
+  ElementRef,
   EventEmitter,
   Input,
   Output,
   Renderer,
   ViewChild
 } from '@angular/core';
-import { Item, ItemSliding } from 'ionic-angular';
 import * as _ from 'lodash';
 
 import { GiftCardProvider } from '../../../../../providers/gift-card/gift-card';
@@ -19,28 +19,7 @@ export type CardItemAction = 'archive' | 'view';
 
 @Component({
   selector: 'gift-card-item',
-  template: `
-    <ion-item-sliding class="card-item-sliding" #slidingItem>
-      <button ion-item (click)="performAction('view')">
-        <img-loader class="logo" [src]="cardConfig?.logo"></img-loader>
-        <ion-note
-          item-end
-          [ngClass]="{ dark: cardConfig?.logoBackgroundColor === '#ffffff' }"
-          *ngIf="shouldShowTotalBalance()"
-        >
-          {{ totalBalance | formatCurrency: currency }}
-        </ion-note>
-      </button>
-      <ion-item-options side="right">
-        <button ion-button (click)="performAction('archive')" color="danger">
-          <div class="archive__icon">
-            <ion-icon ios="md-close" md="md-close"></ion-icon>
-          </div>
-          <div class="archive__text">Archive?</div>
-        </button>
-      </ion-item-options>
-    </ion-item-sliding>
-  `
+  templateUrl: 'gift-card-item.html'
 })
 export class GiftCardItem {
   @Input()
@@ -61,11 +40,8 @@ export class GiftCardItem {
   numCurrencies: number;
   totalBalance: number;
 
-  @ViewChild(Item)
-  item: Item;
-
-  @ViewChild(ItemSliding)
-  slidingItem: ItemSliding;
+  @ViewChild('card')
+  card: ElementRef;
 
   constructor(
     private giftCardProvider: GiftCardProvider,
@@ -88,7 +64,6 @@ export class GiftCardItem {
       cardName: this.cardName,
       action
     });
-    this.slidingItem.close();
   }
 
   shouldShowTotalBalance() {
@@ -101,7 +76,7 @@ export class GiftCardItem {
       this.cardConfig.logoBackgroundColor.indexOf('gradient') > -1;
     const cssProperty = isGradient ? 'background-image' : 'background-color';
     this.renderer.setElementStyle(
-      this.item.getNativeElement(),
+      this.card.nativeElement,
       cssProperty,
       this.cardConfig.logoBackgroundColor
     );

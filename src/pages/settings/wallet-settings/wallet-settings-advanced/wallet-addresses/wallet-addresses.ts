@@ -11,6 +11,7 @@ import { TxFormatProvider } from '../../../../../providers/tx-format/tx-format';
 import { WalletProvider } from '../../../../../providers/wallet/wallet';
 
 // pages
+import { WalletDetailsPage } from '../../../../wallet-details/wallet-details';
 import { AllAddressesPage } from './all-addresses/all-addresses';
 
 import * as _ from 'lodash';
@@ -64,8 +65,9 @@ export class WalletAddressesPage {
         doNotVerify: true
       })
       .then(allAddresses => {
+        const { token } = this.wallet.credentials;
         this.walletProvider
-          .getBalance(this.wallet, {})
+          .getBalance(this.wallet, { tokenAddress: token ? token.address : '' })
           .then(resp => {
             this.withBalance = resp.byAddress;
 
@@ -165,8 +167,14 @@ export class WalletAddressesPage {
     modal.present();
   }
 
-  public async scan(): Promise<void> {
+  public scan() {
     this.walletProvider.startScan(this.wallet);
-    return this.navCtrl.popToRoot();
+    this.navCtrl.popToRoot().then(() => {
+      setTimeout(() => {
+        this.navCtrl.push(WalletDetailsPage, {
+          walletId: this.wallet.credentials.walletId
+        });
+      }, 1000);
+    });
   }
 }

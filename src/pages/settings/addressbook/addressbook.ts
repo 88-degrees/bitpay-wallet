@@ -1,7 +1,8 @@
 import { Component } from '@angular/core';
-import { AlertController, NavController, NavParams } from 'ionic-angular';
+import { NavController, NavParams } from 'ionic-angular';
 import * as _ from 'lodash';
 import { AddressBookProvider } from '../../../providers/address-book/address-book';
+import { AddressProvider } from '../../../providers/address/address';
 import { Logger } from '../../../providers/logger/logger';
 import { AddressbookAddPage } from './add/add';
 import { AddressbookViewPage } from './view/view';
@@ -13,18 +14,17 @@ import { AddressbookViewPage } from './view/view';
 export class AddressbookPage {
   private cache: boolean = false;
   public addressbook: object[] = [];
+  public filteredAddressbook: object[] = [];
 
   public isEmptyList: boolean;
-  public showReorder: boolean;
 
   constructor(
     public navCtrl: NavController,
     public navParams: NavParams,
-    public alertCtrl: AlertController,
     private logger: Logger,
-    private addressbookProvider: AddressBookProvider
+    private addressbookProvider: AddressBookProvider,
+    private addressProvider: AddressProvider
   ) {
-    this.showReorder = false;
     this.initAddressbook();
   }
 
@@ -40,57 +40,23 @@ export class AddressbookPage {
         this.isEmptyList = _.isEmpty(addressBook);
 
         let contacts: object[] = [];
-        const promises = [];
         _.each(addressBook, (contact, k: string) => {
-          promises.push(
-            this.getAddressOrder(k).then(value => {
-              let entry = {
-                address: contact['address'],
-                email: contact['email'],
-                name: contact['name'],
-                order: value ? value : 0
-              };
-
-              contacts.push(entry);
-              return Promise.resolve();
-            })
-          );
+          const coinInfo = this.getCoinAndNetwork(k);
+          contacts.push({
+            name: _.isObject(contact) ? contact.name : contact,
+            address: k,
+            email: _.isObject(contact) ? contact.email : null,
+            tag: _.isObject(contact) ? contact.tag : null,
+            coin: coinInfo.coin,
+            network: coinInfo.network
+          });
         });
-
-        Promise.all(promises).then(() => {
-          this.addressbook = contacts;
-        });
+        this.addressbook = _.clone(contacts);
+        this.filteredAddressbook = _.clone(this.addressbook);
       })
       .catch(err => {
         this.logger.error(err);
       });
-  }
-
-  public reorder(): void {
-    this.showReorder = !this.showReorder;
-  }
-
-  public setAddressOrder(address: string, index: number): void {
-    this.addressbookProvider.setAddressOrder(address, index).then(() => {
-      this.logger.debug(
-        'Address new order stored for ' + address + ': ' + index
-      );
-    });
-    if (this.addressbook[address]) this.addressbook[address]['order'] = index;
-  }
-
-  public async getAddressOrder(address: string): Promise<any> {
-    return this.addressbookProvider.getAddressOrder(address);
-  }
-
-  public reorderAddresses(indexes): void {
-    const element = this.addressbook[indexes.from];
-    this.addressbook.splice(indexes.from, 1);
-    this.addressbook.splice(indexes.to, 0, element);
-    _.each(this.addressbook, (entry, index: number) => {
-      entry['order'] = index;
-      this.setAddressOrder(entry['address'], index);
-    });
   }
 
   public addEntry(): void {
@@ -111,10 +77,14 @@ export class AddressbookPage {
         let name = item['name'];
         return _.includes(name.toLowerCase(), val.toLowerCase());
       });
-      this.addressbook = result;
+      this.filteredAddressbook = result;
     } else {
       // Reset items back to all of the items
       this.initAddressbook();
     }
+  }
+
+  private getCoinAndNetwork(addr: string): { coin: string; network: string } {
+    return this.addressProvider.getCoinAndNetwork(addr);
   }
 }

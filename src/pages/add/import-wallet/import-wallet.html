@@ -1,6 +1,6 @@
 <ion-header>
   <ion-navbar>
-    <ion-title>{{ 'Import Wallet' | translate }}</ion-title>
+    <ion-title class="bp-title">{{ title }}</ion-title>
     <ion-buttons end>
       <button ion-button (click)="import()" [disabled]="!importForm.valid">
         <span translate>Import</span>
@@ -55,7 +55,36 @@
     </button>
 
     <div *ngIf="showAdvOpts" padding-bottom>
+      <ion-item>
+        <ion-label floating>Wallet Service URL</ion-label>
+        <ion-input type="text" formControlName="bwsURL"></ion-input>
+      </ion-item>
+
       <div *ngIf="selectedTab == 'words'">
+        <ion-item>
+          <ion-label>{{'Specify derivation path' | translate}}</ion-label>
+          <ion-toggle formControlName="derivationPathEnabled" (ionChange)="changeDerivationPathValidators();"></ion-toggle>
+        </ion-item>
+
+        <ion-item *ngIf="importForm.value.derivationPathEnabled">
+          <ion-label floating>{{'Coin' | translate}}</ion-label>
+          <ion-select okText="{{okText}}" cancelText="{{cancelText}}" formControlName="coin" (ionChange)="setDerivationPath($event)">
+            <div *ngFor="let coin of availableCoins">
+              <ion-option value="{{coin}}"> {{ getCoinName(coin) }} ({{ coin.toUpperCase() }})</ion-option>
+            </div>
+          </ion-select>
+        </ion-item>
+
+        <ion-item *ngIf="importForm.value.derivationPathEnabled">
+          <ion-label floating>{{'Derivation path' | translate}}</ion-label>
+          <ion-input type="text" formControlName="derivationPath" [value]="importForm.value.derivationPath"></ion-input>
+        </ion-item>
+
+        <ion-item *ngIf="importForm.value.derivationPathEnabled && importForm.value.derivationPath === this.derivationPathHelperProvider.defaultBTC">
+          <ion-label>{{'Shared Wallet' | translate}}</ion-label>
+          <ion-checkbox formControlName="isMultisig"></ion-checkbox>
+        </ion-item>
+
         <ion-item class="with-label">
           <ion-label floating>{{'Password' | translate}}</ion-label>
           <ion-input type="password" formControlName="passphrase"></ion-input>
@@ -67,11 +96,6 @@
           </div>
         </label-tip>
       </div>
-
-      <ion-item>
-        <ion-label floating>Wallet Service URL</ion-label>
-        <ion-input type="text" formControlName="bwsURL"></ion-input>
-      </ion-item>
 
     </div>
   </form>

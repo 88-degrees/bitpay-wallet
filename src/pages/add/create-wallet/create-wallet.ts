@@ -1,16 +1,25 @@
 import { Component, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { TranslateService } from '@ngx-translate/core';
-import { Events, NavController, NavParams } from 'ionic-angular';
-import { Logger } from '../../../providers/logger/logger';
+import {
+  Events,
+  ModalController,
+  NavController,
+  NavParams
+} from 'ionic-angular';
+import * as _ from 'lodash';
 
 // Providers
 import { BwcErrorProvider } from '../../../providers/bwc-error/bwc-error';
+import { BwcProvider } from '../../../providers/bwc/bwc';
 import { ConfigProvider } from '../../../providers/config/config';
+import { Coin, CurrencyProvider } from '../../../providers/currency/currency';
 import { DerivationPathHelperProvider } from '../../../providers/derivation-path-helper/derivation-path-helper';
+import { ErrorsProvider } from '../../../providers/errors/errors';
 import { ExternalLinkProvider } from '../../../providers/external-link/external-link';
+import { Logger } from '../../../providers/logger/logger';
 import { OnGoingProcessProvider } from '../../../providers/on-going-process/on-going-process';
-import { PopupProvider } from '../../../providers/popup/popup';
+import { PersistenceProvider } from '../../../providers/persistence/persistence';
 import { ProfileProvider } from '../../../providers/profile/profile';
 import { PushNotificationsProvider } from '../../../providers/push-notifications/push-notifications';
 import {
@@ -18,8 +27,10 @@ import {
   WalletProvider
 } from '../../../providers/wallet/wallet';
 
-import * as _ from 'lodash';
-
+// Pages
+import { CopayersPage } from '../../add/copayers/copayers';
+import { KeyOnboardingPage } from '../../settings/key-settings/key-onboarding/key-onboarding';
+import { WalletDetailsPage } from '../../wallet-details/wallet-details';
 @Component({
   selector: 'page-create-wallet',
   templateUrl: 'create-wallet.html'
@@ -46,52 +57,61 @@ export class CreateWalletPage implements OnInit {
   private derivationPathByDefault: string;
   private derivationPathForTestnet: string;
   private keyId: string;
+  private showKeyOnboarding: boolean;
 
   public copayers: number[];
   public signatures: number[];
   public showAdvOpts: boolean;
   public seedOptions;
   public isShared: boolean;
-  public coin: string;
+  public coin: Coin;
+  public coinName: string;
   public okText: string;
   public cancelText: string;
   public createForm: FormGroup;
-  public createLabel: string;
 
   constructor(
+    private currencyProvider: CurrencyProvider,
     private navCtrl: NavController,
     private navParams: NavParams,
     private fb: FormBuilder,
     private profileProvider: ProfileProvider,
     private configProvider: ConfigProvider,
     private derivationPathHelperProvider: DerivationPathHelperProvider,
-    private popupProvider: PopupProvider,
     private onGoingProcessProvider: OnGoingProcessProvider,
     private logger: Logger,
     private walletProvider: WalletProvider,
     private translate: TranslateService,
-    private events: Events,
     private pushNotificationsProvider: PushNotificationsProvider,
     private externalLinkProvider: ExternalLinkProvider,
-    private bwcErrorProvider: BwcErrorProvider
+    private bwcErrorProvider: BwcErrorProvider,
+    private bwcProvider: BwcProvider,
+    private modalCtrl: ModalController,
+    private persistenceProvider: PersistenceProvider,
+    private errorsProvider: ErrorsProvider,
+    private events: Events
   ) {
     this.okText = this.translate.instant('Ok');
     this.cancelText = this.translate.instant('Cancel');
     this.isShared = this.navParams.get('isShared');
     this.coin = this.navParams.get('coin');
+    this.coinName = this.currencyProvider.getCoinName(this.coin);
     this.keyId = this.navParams.get('keyId');
     this.defaults = this.configProvider.getDefaults();
     this.tc = this.isShared ? this.defaults.wallet.totalCopayers : 1;
     this.copayers = _.range(2, this.defaults.limits.totalCopayers + 1);
-    this.derivationPathByDefault =
-      this.coin == 'bch'
-        ? this.derivationPathHelperProvider.defaultBCH
-        : this.derivationPathHelperProvider.defaultBTC;
-    this.derivationPathForTestnet = this.derivationPathHelperProvider.defaultTestnet;
+    this.derivationPathByDefault = this.isShared
+      ? this.coin === 'bch'
+        ? this.derivationPathHelperProvider.defaultMultisigBCH
+        : this.derivationPathHelperProvider.defaultMultisigBTC
+      : this.bwcProvider.getCore().Deriver.pathFor(this.coin, 'livenet');
+    this.derivationPathForTestnet = this.bwcProvider
+      .getCore()
+      .Deriver.pathFor(this.coin, 'testnet');
     this.showAdvOpts = false;
-
+    const walletName = this.currencyProvider.getCoinName(this.coin);
     this.createForm = this.fb.group({
-      walletName: [null, Validators.required],
+      walletName: [walletName, Validators.required],
       myName: [null],
       totalCopayers: [1],
       requiredCopayers: [1],
@@ -100,14 +120,12 @@ export class CreateWalletPage implements OnInit {
       recoveryPhrase: [null],
       derivationPath: [this.derivationPathByDefault],
       testnetEnabled: [false],
+      useNativeSegwit: [false],
       singleAddress: [false],
       coin: [null, Validators.required]
     });
     this.createForm.controls['coin'].setValue(this.coin);
-    this.createLabel =
-      this.coin === 'btc'
-        ? this.translate.instant('BTC Wallet')
-        : this.translate.instant('BCH Wallet');
+    this.showKeyOnboarding = this.navParams.data.showKeyOnboarding;
 
     this.setTotalCopayers(this.tc);
     this.updateRCSelect(this.tc);
@@ -130,6 +148,10 @@ export class CreateWalletPage implements OnInit {
     this.createForm.controls['requiredCopayers'].setValue(
       Math.min(Math.trunc(n / 2 + 1), maxReq)
     );
+  }
+
+  public isSingleAddress() {
+    return this.currencyProvider.isSingleAddress(this.coin);
   }
 
   private updateSeedSourceSelect(): void {
@@ -159,6 +181,8 @@ export class CreateWalletPage implements OnInit {
     this.createForm.controls['selectedSeed'].setValue(seed); // new or set
     if (this.createForm.controls['testnet'])
       this.createForm.controls['testnet'].setValue(false);
+    if (this.createForm.controls['useNativeSegwit'])
+      this.createForm.controls['useNativeSegwit'].setValue(false);
     this.createForm.controls['derivationPath'].setValue(
       this.derivationPathByDefault
     );
@@ -183,8 +207,13 @@ export class CreateWalletPage implements OnInit {
           ? this.createForm.value.myName
           : null,
       networkName: this.createForm.value.testnetEnabled ? 'testnet' : 'livenet',
+      useNativeSegwit: this.createForm.value.useNativeSegwit,
       bwsurl: this.createForm.value.bwsURL,
-      singleAddress: this.createForm.value.singleAddress,
+      singleAddress: this.currencyProvider.isSingleAddress(
+        this.createForm.value.coin
+      )
+        ? true
+        : this.createForm.value.singleAddress,
       coin: this.createForm.value.coin
     };
 
@@ -212,6 +241,28 @@ export class CreateWalletPage implements OnInit {
         derivationPath
       );
 
+      // set opts.useLegacyPurpose
+      if (
+        this.derivationPathHelperProvider.parsePath(
+          this.createForm.value.derivationPath
+        ).purpose == "44'" &&
+        opts.n > 1
+      ) {
+        opts.useLegacyPurpose = true;
+        this.logger.debug('Using 44 for Multisig');
+      }
+
+      // set opts.useLegacyCoinType
+      if (
+        this.coin == 'bch' &&
+        this.derivationPathHelperProvider.parsePath(
+          this.createForm.value.derivationPath
+        ).coinCode == "0'"
+      ) {
+        opts.useLegacyCoinType = true;
+        this.logger.debug('Using 0 for BCH creation');
+      }
+
       if (
         !opts.networkName ||
         !opts.derivationStrategy ||
@@ -219,7 +270,7 @@ export class CreateWalletPage implements OnInit {
       ) {
         const title = this.translate.instant('Error');
         const subtitle = this.translate.instant('Invalid derivation path');
-        this.popupProvider.ionicAlert(title, subtitle);
+        this.errorsProvider.showDefaultError(subtitle, title);
         return;
       }
     }
@@ -229,7 +280,7 @@ export class CreateWalletPage implements OnInit {
       const subtitle = this.translate.instant(
         'Please enter the wallet recovery phrase'
       );
-      this.popupProvider.ionicAlert(title, subtitle);
+      this.errorsProvider.showDefaultError(subtitle, title);
       return;
     }
 
@@ -243,46 +294,62 @@ export class CreateWalletPage implements OnInit {
       const subtitle = this.translate.instant(
         'Invalid derivation path for selected coin'
       );
-      this.popupProvider.ionicAlert(title, subtitle);
+      this.errorsProvider.showDefaultError(subtitle, title);
       return;
     }
 
-    if (
-      this.coin == 'bch' &&
-      this.derivationPathHelperProvider.parsePath(
-        this.createForm.value.derivationPath
-      ).coinCode == "0'"
-    ) {
-      opts.useLegacyCoinType = true;
-      this.logger.debug('Using 0 for BCH creation');
+    if (this.showKeyOnboarding) {
+      this.showKeyOnboardingSlides(opts);
+    } else {
+      this.create(opts);
     }
+  }
 
-    this.create(opts);
+  private showKeyOnboardingSlides(opts) {
+    this.logger.debug('Showing key onboarding');
+    const modal = this.modalCtrl.create(KeyOnboardingPage, null, {
+      showBackdrop: false,
+      enableBackdropDismiss: false
+    });
+    modal.present();
+    modal.onDidDismiss(() => {
+      this.create(opts);
+    });
+    this.persistenceProvider.setKeyOnboardingFlag();
   }
 
   private create(opts): void {
     this.onGoingProcessProvider.set('creatingWallet');
-    const addingNewWallet = this.keyId ? true : false;
+    opts['keyId'] = this.keyId;
     this.profileProvider
-      .createWallet(addingNewWallet, opts)
+      .createWallet(opts)
       .then(wallet => {
         this.onGoingProcessProvider.clear();
         this.walletProvider.updateRemotePreferences(wallet);
         this.pushNotificationsProvider.updateSubscription(wallet);
         if (this.createForm.value.selectedSeed == 'set') {
           this.profileProvider.setBackupGroupFlag(wallet.credentials.keyId);
-          this.profileProvider.setWalletBackup(wallet.credentials.id);
-        }
-        if (!addingNewWallet) {
-          this.profileProvider.setWalletGroupName(
-            wallet.credentials.keyId,
-            wallet.credentials.walletName
-          );
+          this.profileProvider.setWalletBackup(wallet.credentials.walletId);
         }
         this.navCtrl.popToRoot().then(() => {
-          this.events.publish('Local/WalletListChange');
+          this.events.publish('Local/FetchWallets');
           setTimeout(() => {
-            this.events.publish('OpenWallet', wallet);
+            if (wallet.isComplete()) {
+              this.navCtrl.push(WalletDetailsPage, {
+                walletId: wallet.credentials.walletId
+              });
+            } else {
+              const copayerModal = this.modalCtrl.create(
+                CopayersPage,
+                {
+                  walletId: wallet.credentials.walletId
+                },
+                {
+                  cssClass: 'wallet-details-modal'
+                }
+              );
+              copayerModal.present();
+            }
           }, 1000);
         });
       })
@@ -294,9 +361,13 @@ export class CreateWalletPage implements OnInit {
           err.message != 'PASSWORD_CANCELLED'
         ) {
           this.logger.error('Create: could not create wallet', err);
-          const title = this.translate.instant('Error');
-          err = this.bwcErrorProvider.msg(err);
-          this.popupProvider.ionicAlert(title, err);
+          if (err.message === 'WRONG_PASSWORD') {
+            this.errorsProvider.showWrongEncryptPasswordError();
+          } else {
+            const title = this.translate.instant('Error');
+            err = this.bwcErrorProvider.msg(err);
+            this.errorsProvider.showDefaultError(err, title);
+          }
         }
         return;
       });
@@ -318,5 +389,21 @@ export class CreateWalletPage implements OnInit {
       okText,
       cancelText
     );
+  }
+
+  public set(type: string, number: number) {
+    switch (type) {
+      case 'requiredCopayers':
+        if (this.signatures.includes(number)) {
+          this.createForm.controls['requiredCopayers'].setValue(number);
+        }
+        break;
+
+      case 'totalCopayers':
+        if (this.copayers.includes(number)) {
+          this.createForm.controls['totalCopayers'].setValue(number);
+        }
+        break;
+    }
   }
 }

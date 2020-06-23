@@ -6,6 +6,7 @@ import { Logger } from '../../../providers/logger/logger';
 import { SocialSharing } from '@ionic-native/social-sharing';
 
 // providers
+import { AnalyticsProvider } from '../../../providers/analytics/analytics';
 import { AppProvider } from '../../../providers/app/app';
 import { ConfigProvider } from '../../../providers/config/config';
 import { PopupProvider } from '../../../providers/popup/popup';
@@ -16,14 +17,13 @@ import { ReplaceParametersProvider } from '../../../providers/replace-parameters
   templateUrl: 'share.html'
 })
 export class SharePage {
-  public facebook: boolean;
-  public twitter: boolean;
-  public googleplus: boolean;
-  public email: boolean;
-  public whatsapp: boolean;
   public title: string;
 
+  private facebook: boolean;
+  private twitter: boolean;
+  private whatsapp: boolean;
   private downloadUrl: string;
+  private downloadText: string;
   private shareFacebookVia: string;
   private shareTwitterVia: string;
 
@@ -34,7 +34,8 @@ export class SharePage {
     private configProvider: ConfigProvider,
     private replaceParametersProvider: ReplaceParametersProvider,
     private translate: TranslateService,
-    private popupProvider: PopupProvider
+    private popupProvider: PopupProvider,
+    private analyticsProvider: AnalyticsProvider
   ) {
     this.title = this.replaceParametersProvider.replace(
       this.translate.instant('Share {{appName}}'),
@@ -45,6 +46,12 @@ export class SharePage {
       this.appProvider.info.name == 'copay'
         ? defaults.download.copay.url
         : defaults.download.bitpay.url;
+    this.downloadText = this.replaceParametersProvider.replace(
+      this.translate.instant(
+        'Spend and control your cryptocurrency by downloading the {{appName}} app.'
+      ),
+      { appName: this.appProvider.info.nameCase }
+    );
   }
 
   ionViewWillEnter() {
@@ -96,13 +103,14 @@ export class SharePage {
   }
 
   public shareFacebook() {
+    this.analyticsProvider.logEvent('share', { method: 'Facebook' });
     if (!this.facebook) {
       this.showError();
       return;
     }
     this.socialSharing.shareVia(
       this.shareFacebookVia,
-      null,
+      this.downloadText,
       null,
       null,
       this.downloadUrl
@@ -110,13 +118,14 @@ export class SharePage {
   }
 
   public shareTwitter() {
+    this.analyticsProvider.logEvent('share', { method: 'Twitter' });
     if (!this.twitter) {
       this.showError();
       return;
     }
     this.socialSharing.shareVia(
       this.shareTwitterVia,
-      null,
+      this.downloadText,
       null,
       null,
       this.downloadUrl
@@ -124,11 +133,16 @@ export class SharePage {
   }
 
   public shareWhatsapp() {
+    this.analyticsProvider.logEvent('share', { method: 'Whatsapp' });
     if (!this.whatsapp) {
       this.showError();
       return;
     }
-    this.socialSharing.shareViaWhatsApp(this.downloadUrl);
+    this.socialSharing.shareViaWhatsApp(
+      this.downloadText,
+      null,
+      this.downloadUrl
+    );
   }
 
   private showError() {

@@ -1,4 +1,5 @@
 import { Directive, ElementRef, Input } from '@angular/core';
+import { ThemeProvider } from '../../providers/theme/theme';
 
 /* 
 Sometimes the user can overshoot when scrolling, which can cause gaps to appear between
@@ -15,9 +16,14 @@ export class FixedScrollBgColor {
   @Input('fixed-scroll-bg-color')
   color: string;
   @Input()
-  bottomColor: string = '#f8f8f9';
+  bottomColor: string;
 
-  constructor(private element: ElementRef) {}
+  constructor(
+    private element: ElementRef,
+    private themeProvider: ThemeProvider
+  ) {
+    this.bottomColor = this.themeProvider.getThemeInfo().fixedScrollBgColor;
+  }
 
   ngOnChanges() {
     this.setFixedAndScrollContentBgColor(this.color);
@@ -30,6 +36,9 @@ export class FixedScrollBgColor {
     const fixedContent = this.element.nativeElement.getElementsByClassName(
       'fixed-content'
     )[0];
+    const wrapperContent = this.element.nativeElement.getElementsByClassName(
+      'wrapper'
+    )[0];
 
     const linearGradient = `linear-gradient(to bottom, ${this.color}, ${
       this.color
@@ -40,9 +49,17 @@ export class FixedScrollBgColor {
     if (color) {
       scrollContent.style.setProperty('background-image', linearGradient);
       fixedContent.style.setProperty('background-image', linearGradient);
+      if (wrapperContent && wrapperContent.style) {
+        wrapperContent.style.setProperty('background', this.bottomColor);
+        wrapperContent.style.setProperty('min-height', '100%');
+      }
     } else {
       scrollContent.style.removeProperty('background-image');
       fixedContent.style.removeProperty('background-image');
+      if (wrapperContent && wrapperContent.style) {
+        wrapperContent.style.removeProperty('background');
+        wrapperContent.style.removeProperty('min-height');
+      }
     }
   }
 }

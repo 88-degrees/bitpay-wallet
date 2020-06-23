@@ -2,136 +2,133 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import * as _ from 'lodash';
 import env from '../../environments';
+import { CoinsMap, CurrencyProvider } from '../../providers/currency/currency';
 import { Logger } from '../../providers/logger/logger';
 
 @Injectable()
 export class RateProvider {
-  private rates;
   private alternatives;
-  private ratesBCH;
-  private ratesBtcAvailable: boolean;
-  private ratesBchAvailable: boolean;
-
-  private SAT_TO_BTC: number;
-  private BTC_TO_SAT: number;
-
-  private rateServiceUrl = env.ratesAPI.btc;
-  private bchRateServiceUrl = env.ratesAPI.bch;
+  private rates = {} as CoinsMap<{}>;
+  private ratesAvailable = {} as CoinsMap<boolean>;
+  private rateServiceUrl = {} as CoinsMap<string>;
 
   private fiatRateAPIUrl = 'https://bws.bitpay.com/bws/api/v1/fiatrates';
 
-  constructor(private http: HttpClient, private logger: Logger) {
+  constructor(
+    private currencyProvider: CurrencyProvider,
+    private http: HttpClient,
+    private logger: Logger
+  ) {
     this.logger.debug('RateProvider initialized');
-    this.rates = {};
-    this.alternatives = [];
-    this.ratesBCH = {};
-    this.SAT_TO_BTC = 1 / 1e8;
-    this.BTC_TO_SAT = 1e8;
-    this.ratesBtcAvailable = false;
-    this.ratesBchAvailable = false;
-    this.updateRatesBtc();
-    this.updateRatesBch();
+    this.alternatives = {};
+    for (const coin of this.currencyProvider.getAvailableCoins()) {
+      this.rateServiceUrl[coin] = env.ratesAPI[coin];
+      this.rates[coin] = { USD: 1 };
+      this.ratesAvailable[coin] = false;
+      this.updateRates(coin);
+    }
   }
 
-  public updateRatesBtc(): Promise<any> {
+  public updateRates(chain: string): Promise<any> {
     return new Promise((resolve, reject) => {
-      this.getBTC()
-        .then(dataBTC => {
-          _.each(dataBTC, currency => {
-            this.rates[currency.code] = currency.rate;
-            this.alternatives.push({
-              name: currency.name,
-              isoCode: currency.code,
-              rate: currency.rate
-            });
+      this.getCoin(chain)
+        .then(dataCoin => {
+          _.each(dataCoin, currency => {
+            if (currency && currency.code && currency.rate) {
+              this.rates[chain][currency.code] = currency.rate;
+              if (currency.name)
+                this.alternatives[currency.code] = { name: currency.name };
+            }
           });
-          this.ratesBtcAvailable = true;
+          this.ratesAvailable[chain] = true;
           resolve();
         })
-        .catch(errorBTC => {
-          this.logger.error(errorBTC);
-          reject(errorBTC);
+        .catch(errorCoin => {
+          this.logger.error(errorCoin);
+          reject(errorCoin);
         });
     });
   }
 
-  public updateRatesBch(): Promise<any> {
-    return new Promise((resolve, reject) => {
-      this.getBCH()
-        .then(dataBCH => {
-          _.each(dataBCH, currency => {
-            this.ratesBCH[currency.code] = currency.rate;
-          });
-          this.ratesBchAvailable = true;
-          resolve();
-        })
-        .catch(errorBCH => {
-          this.logger.error(errorBCH);
-          reject(errorBCH);
-        });
-    });
-  }
-
-  public getBTC(): Promise<any> {
+  public getCoin(chain: string): Promise<any> {
     return new Promise(resolve => {
-      this.http.get(this.rateServiceUrl).subscribe(data => {
+      this.http.get(this.rateServiceUrl[chain]).subscribe(data => {
         resolve(data);
       });
     });
   }
 
-  public getBCH(): Promise<any> {
-    return new Promise(resolve => {
-      this.http.get(this.bchRateServiceUrl).subscribe(data => {
-        resolve(data);
-      });
-    });
-  }
-
-  public getRate(code: string, chain?: string): number {
-    if (chain == 'bch') return this.ratesBCH[code];
-    else return this.rates[code];
-  }
-
-  public getAlternatives() {
-    return this.alternatives;
-  }
-
-  public isBtcAvailable() {
-    return this.ratesBtcAvailable;
-  }
-
-  public isBchAvailable() {
-    return this.ratesBchAvailable;
-  }
-
-  public toFiat(satoshis: number, code: string, chain: string): number {
+  public getRate(code: string, chain?: string, opts?: { rates? }): number {
+    const customRate =
+      opts && opts.rates && opts.rates[chain] && opts.rates[chain][code];
+    if (customRate) return customRate;
+    if (this.rates[chain][code]) return this.rates[chain][code];
     if (
-      (!this.isBtcAvailable() && chain == 'btc') ||
-      (!this.isBchAvailable() && chain == 'bch')
+      !this.rates[chain][code] &&
+      this.rates[chain]['USD'] &&
+      this.rates['btc'][code] &&
+      this.rates['btc']['USD'] &&
+      this.rates['btc']['USD'] > 0
     ) {
+      const newRate = +(
+        (this.rates[chain]['USD'] * this.rates['btc'][code]) /
+        this.rates['btc']['USD']
+      ).toFixed(2);
+      return newRate;
+    }
+    this.logger.warn(
+      'There are no rates for chain: ' + chain + ' - code: ' + code
+    );
+    return undefined;
+  }
+
+  private getAlternatives(): any[] {
+    const alternatives: any[] = [];
+    for (let key in this.alternatives) {
+      alternatives.push({ isoCode: key, name: this.alternatives[key].name });
+    }
+    return alternatives;
+  }
+
+  public isCoinAvailable(chain: string) {
+    return this.ratesAvailable[chain];
+  }
+
+  public toFiat(
+    satoshis: number,
+    code: string,
+    chain,
+    opts?: { customRate?: number; rates? }
+  ): number {
+    if (!this.isCoinAvailable(chain)) {
       return null;
     }
-    return satoshis * this.SAT_TO_BTC * this.getRate(code, chain);
+    const customRate = opts && opts.customRate;
+    const rate = customRate || this.getRate(code, chain, opts);
+    return (
+      satoshis *
+      (1 / this.currencyProvider.getPrecision(chain).unitToSatoshi) *
+      rate
+    );
   }
 
-  public fromFiat(amount: number, code: string, chain: string): number {
-    if (
-      (!this.isBtcAvailable() && chain == 'btc') ||
-      (!this.isBchAvailable() && chain == 'bch')
-    ) {
+  public fromFiat(
+    amount: number,
+    code: string,
+    chain,
+    opts?: { rates? }
+  ): number {
+    if (!this.isCoinAvailable(chain)) {
       return null;
     }
-    return (amount / this.getRate(code, chain)) * this.BTC_TO_SAT;
+    return (
+      (amount / this.getRate(code, chain, opts)) *
+      this.currencyProvider.getPrecision(chain).unitToSatoshi
+    );
   }
 
   public listAlternatives(sort: boolean) {
-    let alternatives = _.map(this.getAlternatives(), (item: any) => {
-      return {
-        name: item.name,
-        isoCode: item.isoCode
-      };
-    });
+    const alternatives = this.getAlternatives();
     if (sort) {
       alternatives.sort((a, b) => {
         return a.name.toLowerCase() > b.name.toLowerCase() ? 1 : -1;
@@ -142,19 +139,10 @@ export class RateProvider {
 
   public whenRatesAvailable(chain: string): Promise<any> {
     return new Promise(resolve => {
-      if (
-        (this.ratesBtcAvailable && chain == 'btc') ||
-        (this.ratesBchAvailable && chain == 'bch')
-      )
-        resolve();
+      if (this.ratesAvailable[chain]) resolve();
       else {
-        if (chain == 'btc') {
-          this.updateRatesBtc().then(() => {
-            resolve();
-          });
-        }
-        if (chain == 'bch') {
-          this.updateRatesBch().then(() => {
+        if (chain) {
+          this.updateRates(chain).then(() => {
             resolve();
           });
         }

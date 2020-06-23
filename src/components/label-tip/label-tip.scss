@@ -4,11 +4,10 @@ label-tip {
   padding: 20px;
   position: relative;
 
-  width: calc(100% - 50px);
-  left: 25px;
+  width: 90%;
   border-radius: 15px;
 
-  margin-bottom: 20px;
+  margin: 20px auto !important;
 
   &:before {
     $arrow-height: 18px;
@@ -22,6 +21,13 @@ label-tip {
     position: absolute;
     top: -$arrow-height;
     left: 25px;
+  }
+
+  // Remove arrowhead from label
+  &.info.no-arrowhead:before,
+  &.warn.no-arrowhead:before,
+  &.danger.no-arrowhead:before {
+    display: none !important;
   }
 
   &.danger {

@@ -1,44 +1,26 @@
 <action-sheet>
-  <ion-row align-items-center>
-    <ion-col col-4 text-left>
-      <button ion-button clear icon-only color="grey" (click)="dismiss()">
-        <ion-icon name="arrow-round-back"></ion-icon>
-      </button>
-    </ion-col>
-    <ion-col col-4 text-center class="destination-title">{{ title }}</ion-col>
-  </ion-row>
-  <!--<div *ngFor="let wallet of wallets" (click)="selectWallet(wallet)">{{wallet.name}}</div>-->
-  <div class="no-wallets" *ngIf="(!walletsBtc || !walletsBtc[0]) && (!walletsBch || !walletsBch[0])" translate>
-    No wallets available
+  <div class="bp-header">
+    <ion-title>{{ title }}</ion-title>
   </div>
-  <div *ngIf="walletsBtc && walletsBtc[0]">
-    <ion-item-divider>
-      <div class="title">
-        <span translate>Bitcoin Wallets</span>
-      </div>
-    </ion-item-divider>
-
-    <ion-list>
-      <button ion-item detail-none *ngFor="let wallet of walletsBtc" (click)="optionClicked(wallet)">
-        <wallet-item-content [wallet]="wallet"></wallet-item-content>
-      </button>
-    </ion-list>
-  </div>
-
-  <div *ngIf="walletsBch && walletsBch[0]">
-    <ion-item-divider>
-      <div class="title">
-        <span translate>Bitcoin Cash Wallets</span>
-      </div>
-    </ion-item-divider>
-
-    <ion-list>
-      <div>
-        <button ion-item detail-none *ngFor="let wallet of walletsBch" (click)="optionClicked(wallet)">
+  <div *ngIf="walletsByKeys && walletsByKeys[0]; else noWallets">
+    <div *ngFor="let walletsByKey of walletsByKeys">
+      <ion-list no-lines class="bp-list">
+        <div class="key-divider">
+          <ion-icon>
+            <img src="assets/img/settings-icons/icon-key.svg" width="15">
+          </ion-icon>
+          <span>{{ walletsByKey[0].walletGroupName }}</span>
+        </div>
+        <div *ngFor="let wallet of walletsByKey" (click)="optionClicked(wallet)">
           <wallet-item-content [wallet]="wallet"></wallet-item-content>
-        </button>
-      </div>
-    </ion-list>
+        </div>
+      </ion-list>
+    </div>
   </div>
+  <ng-template #noWallets>
+    <div class="no-wallets">
+      {{'No wallets available' | translate}}
+    </div>
+  </ng-template>
   <ion-item-divider></ion-item-divider>
 </action-sheet>

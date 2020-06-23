@@ -1,33 +1,10 @@
 page-confirm,
-confirm-card-purchase {
-  .wallet-details-header {
-    button {
-      font-weight: 100;
-      font-size: 16px;
-    }
-  }
-  ion-content {
-    .fixed-content,
-    .scroll-content {
-      margin-bottom: 90px;
-    }
-  }
-  .no-margin-bottom {
-    .fixed-content,
-    .scroll-content {
-      margin-bottom: 0px;
-    }
-  }
-  .header-container {
-    padding: 20px 0px 20px 0px;
-    .sending-label {
-      display: flex;
-      align-items: center;
-      span {
-        font-size: 1.8rem;
-      }
-    }
-  }
+confirm-card-purchase-page,
+page-txp-details,
+page-tx-details,
+page-coinbase-withdraw,
+page-coinbase-tx-details,
+page-bitpay-card-topup {
   .amount-label {
     padding-top: 1rem;
     .amount {
@@ -54,21 +31,8 @@ confirm-card-purchase {
     }
   }
   .item-fee {
-    line-height: 20px;
-    .fee-title {
-      margin-bottom: 5px;
-      color: color($colors, grey);
-    }
     .fee-loading {
       font-weight: 300;
-      color: color($colors, light-grey);
-    }
-    .fee-amount {
-      font-weight: 400;
-    }
-    .fee-details {
-      margin-top: 3px;
-      font-size: 12.5px;
       color: color($colors, light-grey);
     }
     &.warn {
@@ -77,17 +41,13 @@ confirm-card-purchase {
         color: color($colors, error);
       }
     }
-    ion-note {
-      font-weight: 100;
-    }
     &.btn-opacity {
-      opacity: 1;
+      background-color: #fbfbfb;
     }
   }
-  .item-gravatar {
-    img {
-      margin-right: 1rem;
-    }
+  .padded-input {
+    padding-top: 10px;
+    padding-bottom: 15px;
   }
   .paypro {
     width: 100%;
@@ -99,46 +59,135 @@ confirm-card-purchase {
       text-transform: uppercase;
     }
   }
-  @mixin row-flex {
+
+  .payment-proposal-to {
+    padding: 10px;
+    height: 39px;
+    max-width: 200px;
+    border-radius: 19.5px;
+    background-color: #f6f7fc;
     display: flex;
+    justify-content: center;
     align-items: center;
-    margin-top: 1rem;
+    .multiple-length {
+      display: flex;
+    }
+    .coin-img {
+      width: 18px;
+      height: 18px;
+      margin-right: 6px;
+    }
+    .text-address {
+      display: flex;
+      width: 25px;
+      justify-content: space-between;
+    }
+    .debit-card {
+      width: 40px;
+    }
   }
-  .container-to,
-  .container-from {
-    .wallet,
-    .payment-proposal-to {
-      @include row-flex;
-      .icon-bitcoin {
-        margin-right: 0.8rem;
-        width: 25px;
-        height: 25px;
-        padding: 2px 7px;
-        border: 1px solid color($colors, grey);
-        border-radius: $icon-border-radius;
-      }
-      .address-coppied {
-        display: flex;
-        align-items: center;
-        width: 100%;
-        border-radius: 3px;
-        background-color: rgb(248, 248, 248);
-        .text-address {
-          flex: 0 0 47px;
-          white-space: nowrap;
-          display: block;
-          img {
-            margin: 12px 0 12px 12px;
-            vertical-align: middle;
-          }
-        }
-      }
-    }
-    &.not-clickable {
-      pointer-events: none;
-    }
+  .not-clickable {
+    pointer-events: none;
   }
   .last-item {
     margin-left: auto !important;
+  }
+
+  .bp-list {
+    .sub-title {
+      color: #000000;
+      font-size: 16px;
+      font-weight: 500;
+      line-height: 18px;
+    }
+    .item {
+      &.item-ios,
+      &.item-md {
+        padding-left: 19px;
+        .item-inner {
+          padding-top: 0px;
+          padding-bottom: 0px;
+        }
+      }
+    }
+  }
+  .background-content {
+    display: flex;
+    padding: 0px 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    align-items: center;
+  }
+
+  .note-container {
+    max-width: 100px;
+  }
+
+  .wallet,
+  .multi-recip-title {
+    span {
+      height: 19px;
+      color: #000000;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 19px;
+      text-align: right;
+    }
+    ion-icon.item-img.icon {
+      &.icon-md,
+      &.icon-ios {
+        margin: 9px 0px 9px 0;
+        justify-content: center;
+        padding: 7px;
+        img {
+          width: 20px;
+        }
+        &.rectangle {
+          border-radius: 7px;
+          justify-content: center;
+        }
+        .coin-img {
+          width: 18px;
+          height: 18px;
+          margin: 0px;
+        }
+      }
+    }
+    .gravatar {
+      ion-icon {
+        padding: 0px !important;
+        margin: 0px !important;
+        img {
+          width: 18px;
+        }
+        &.rectangle {
+          border-radius: 12px !important;
+        }
+      }
+    }
+  }
+  .multi-recip-title {
+    display: flex;
+    align-items: center;
+  }
+  .line-divider {
+    margin: 0px 17px;
+  }
+  .background-button-content {
+    height: 47px;
+    background-color: #edf0fe;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    max-width: 200px;
+    border-radius: 21px;
+    margin: 25px auto;
+  }
+  .scanner-icon {
+    z-index: 99;
+    font-size: 28px;
+    color: color($colors, primary);
+    padding-top: 20px;
   }
 }

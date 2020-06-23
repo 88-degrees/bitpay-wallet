@@ -1,7 +1,11 @@
 import { Injectable } from '@angular/core';
 import { QRScanner } from '@ionic-native/qr-scanner';
+import { TranslateService } from '@ngx-translate/core';
 import { Events } from 'ionic-angular';
-import { Logger } from '../../providers/logger/logger';
+
+// Providers
+import { ErrorsProvider } from '../errors/errors';
+import { Logger } from '../logger/logger';
 import { PlatformProvider } from '../platform/platform';
 
 @Injectable()
@@ -26,7 +30,9 @@ export class ScanProvider {
     private qrScanner: QRScanner,
     private platform: PlatformProvider,
     private logger: Logger,
-    private events: Events
+    private events: Events,
+    private translate: TranslateService,
+    private errorsProvider: ErrorsProvider
   ) {
     this.scannerVisible = false;
     this.lightEnabled = false;
@@ -150,6 +156,13 @@ export class ScanProvider {
         .catch(err => {
           this.isAvailable = false;
           this.logger.error(err);
+          if (err && err.name === 'CAMERA_ACCESS_DENIED') {
+            const msg = this.translate.instant(
+              'Check the app camera permissions under your phone settings'
+            );
+            const title = this.translate.instant('Camera access denied');
+            this.errorsProvider.showDefaultError(msg, title);
+          }
           // does not return `status` if there is an error
           this.qrScanner.getStatus().then(status => {
             this.completeInitialization(status);

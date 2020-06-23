@@ -1,12 +1,18 @@
 import { Component } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
-import { Events, NavController, NavParams } from 'ionic-angular';
+import {
+  Events,
+  NavController,
+  NavParams,
+  ViewController
+} from 'ionic-angular';
 import * as _ from 'lodash';
 import { Logger } from '../../providers/logger/logger';
 
 // Providers
 import { AddressBookProvider } from '../../providers/address-book/address-book';
 import { ConfigProvider } from '../../providers/config/config';
+import { CurrencyProvider } from '../../providers/currency/currency';
 import { ExternalLinkProvider } from '../../providers/external-link/external-link';
 import { FilterProvider } from '../../providers/filter/filter';
 import { OnGoingProcessProvider } from '../../providers/on-going-process/on-going-process';
@@ -21,7 +27,7 @@ import { WalletProvider } from '../../providers/wallet/wallet';
   selector: 'page-tx-details',
   templateUrl: 'tx-details.html'
 })
-export class TxDetailsPage {
+export class TxDetailsModal {
   private txId: string;
   private config;
   private blockexplorerUrl: string;
@@ -41,6 +47,7 @@ export class TxDetailsPage {
   constructor(
     private addressBookProvider: AddressBookProvider,
     private configProvider: ConfigProvider,
+    private currencyProvider: CurrencyProvider,
     private events: Events,
     private externalLinkProvider: ExternalLinkProvider,
     private logger: Logger,
@@ -54,7 +61,8 @@ export class TxDetailsPage {
     private walletProvider: WalletProvider,
     private translate: TranslateService,
     private filter: FilterProvider,
-    private rateProvider: RateProvider
+    private rateProvider: RateProvider,
+    private viewCtrl: ViewController
   ) {}
 
   ionViewDidLoad() {
@@ -71,10 +79,7 @@ export class TxDetailsPage {
       : true;
 
     let defaults = this.configProvider.getDefaults();
-    this.blockexplorerUrl =
-      this.wallet.coin === 'bch'
-        ? defaults.blockExplorerUrl.bch
-        : defaults.blockExplorerUrl.btc;
+    this.blockexplorerUrl = defaults.blockExplorerUrl[this.wallet.coin];
 
     this.txConfirmNotificationProvider.checkIfEnabled(this.txId).then(res => {
       this.txNotification = {
@@ -183,7 +188,15 @@ export class TxDetailsPage {
     }, 10);
   }
 
-  private updateTxDebounced = _.debounce(this.updateTx, 1000);
+  private updateTxDebounced = _.debounce(
+    async hideLoading => {
+      this.updateTx({ hideLoading });
+    },
+    1000,
+    {
+      leading: true
+    }
+  );
 
   private updateTx(opts?): void {
     opts = opts ? opts : {};
@@ -194,14 +207,22 @@ export class TxDetailsPage {
         if (!opts.hideLoading) this.onGoingProcess.clear();
 
         this.btx = this.txFormatProvider.processTx(this.wallet.coin, tx);
+        this.btx.network = this.wallet.credentials.network;
+        this.btx.coin = this.wallet.coin;
+        const chain = this.currencyProvider
+          .getChain(this.wallet.coin)
+          .toLowerCase();
         this.btx.feeFiatStr = this.txFormatProvider.formatAlternativeStr(
-          this.wallet.coin,
+          chain,
           tx.fees
         );
-        this.btx.feeRateStr =
-          ((this.btx.fees / (this.btx.amount + this.btx.fees)) * 100).toFixed(
-            2
-          ) + '%';
+
+        if (this.currencyProvider.isUtxoCoin(this.wallet.coin)) {
+          this.btx.feeRateStr =
+            ((this.btx.fees / (this.btx.amount + this.btx.fees)) * 100).toFixed(
+              2
+            ) + '%';
+        }
 
         if (!this.btx.note) {
           this.txMemo = this.btx.message;
@@ -225,15 +246,17 @@ export class TxDetailsPage {
 
         this.updateFiatRate();
 
-        this.walletProvider
-          .getLowAmount(this.wallet)
-          .then((amount: number) => {
-            this.btx.lowAmount = tx.amount < amount;
-          })
-          .catch(err => {
-            this.logger.warn('Error getting low amounts: ' + err);
-            return;
-          });
+        if (this.currencyProvider.isUtxoCoin(this.wallet.coin)) {
+          this.walletProvider
+            .getLowAmount(this.wallet)
+            .then((amount: number) => {
+              this.btx.lowAmount = tx.amount < amount;
+            })
+            .catch(err => {
+              this.logger.warn('Error getting low amounts: ' + err);
+              return;
+            });
+        }
       })
       .catch(err => {
         if (!opts.hideLoading) this.onGoingProcess.clear();
@@ -267,12 +290,12 @@ export class TxDetailsPage {
 
   public viewOnBlockchain(): void {
     let btx = this.btx;
+    const network =
+      this.getShortNetworkName() == 'test' ? 'testnet/' : 'mainnet/';
     let url =
-      'https://' +
-      this.blockexplorerUrl +
-      (this.getShortNetworkName() == 'test' ? 'testnet/' : 'mainnet/') +
-      'tx/' +
-      btx.txid;
+      this.wallet.coin !== 'xrp'
+        ? `https://${this.blockexplorerUrl}${network}tx/${btx.txid}`
+        : this.getXRPBlockexplorerUrl() + btx.txid;
     let optIn = true;
     let title = null;
     let message = this.translate.instant('View Transaction on Insight');
@@ -286,6 +309,14 @@ export class TxDetailsPage {
       okText,
       cancelText
     );
+  }
+
+  private getXRPBlockexplorerUrl(): string {
+    let url =
+      this.getShortNetworkName() == 'test'
+        ? 'https://test.bithomp.com/explorer/'
+        : `https://${this.blockexplorerUrl}tx/`;
+    return url;
   }
 
   public getShortNetworkName(): string {
@@ -354,11 +385,15 @@ export class TxDetailsPage {
             settings.alternativeIsoCode +
             ' @ ' +
             this.filter.formatFiatAmount(fiat.rate) +
-            ' USD per ' +
+            ` ${settings.alternativeIsoCode} per ` +
             this.wallet.coin.toUpperCase();
         } else {
           this.btx.fiatRateStr = this.btx.alternativeAmountStr;
         }
       });
+  }
+
+  close() {
+    this.viewCtrl.dismiss();
   }
 }

@@ -2,11 +2,10 @@ import { Injectable } from '@angular/core';
 
 import { Logger } from '../../providers/logger/logger';
 
-import * as BWC from 'bitcore-wallet-client';
+import BWC from 'bitcore-wallet-client';
 
 @Injectable()
 export class BwcProvider {
-  public buildTx = BWC.buildTx;
   public parseSecret = BWC.parseSecret;
   public Client = BWC;
   constructor(private logger: Logger) {
@@ -18,6 +17,10 @@ export class BwcProvider {
 
   public getBitcoreCash() {
     return BWC.BitcoreCash;
+  }
+
+  public getCore() {
+    return BWC.Core;
   }
 
   public getErrors() {
@@ -36,6 +39,10 @@ export class BwcProvider {
     return BWC.Key;
   }
 
+  public getPayProV2() {
+    return BWC.PayProV2;
+  }
+
   public upgradeCredentialsV1(x) {
     return BWC.upgradeCredentialsV1(x);
   }
@@ -52,7 +59,9 @@ export class BwcProvider {
       baseUrl: opts.bwsurl || 'https://bws.bitpay.com/bws/api',
       verbose: opts.verbose,
       timeout: 100000,
-      transports: ['polling']
+      transports: ['polling'],
+      bp_partner: opts.bp_partner,
+      bp_partner_version: opts.bp_partner_version
     });
 
     if (walletData) bwc.fromString(walletData);

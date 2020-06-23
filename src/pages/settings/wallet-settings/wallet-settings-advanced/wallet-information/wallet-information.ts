@@ -3,6 +3,7 @@ import { NavParams } from 'ionic-angular';
 import * as _ from 'lodash';
 
 // providers
+import { CurrencyProvider } from '../../../../../providers/currency/currency';
 import { Logger } from '../../../../../providers/logger/logger';
 import { ProfileProvider } from '../../../../../providers/profile/profile';
 
@@ -27,9 +28,12 @@ export class WalletInformationPage {
   public pubKeys;
   public externalSource: string;
   public canSign: boolean;
+  public unitToSatoshi: number;
+  public linkedEthWalletName: string;
 
   constructor(
     private profileProvider: ProfileProvider,
+    private currencyProvider: CurrencyProvider,
     private navParams: NavParams,
     private logger: Logger
   ) {}
@@ -41,11 +45,14 @@ export class WalletInformationPage {
   ionViewWillEnter() {
     this.wallet = this.profileProvider.getWallet(this.navParams.data.walletId);
     this.walletName = this.wallet.name;
-    this.coin = this.wallet.coin;
+    this.coin = this.wallet.coin.toUpperCase();
+    this.unitToSatoshi = this.currencyProvider.getPrecision(
+      this.wallet.coin
+    ).unitToSatoshi;
     this.walletId = this.wallet.credentials.walletId;
     this.N = this.wallet.credentials.n;
     this.M = this.wallet.credentials.m;
-    if (this.wallet.cachedStatus) {
+    if (!_.isEmpty(this.wallet.cachedStatus)) {
       this.copayers = this.wallet.cachedStatus.wallet.copayers;
     }
     this.copayerId = this.wallet.credentials.copayerId;
@@ -57,5 +64,10 @@ export class WalletInformationPage {
     this.pubKeys = _.map(this.wallet.credentials.publicKeyRing, 'xPubKey');
     this.externalSource = null;
     this.canSign = this.wallet.canSign;
+    this.linkedEthWalletName = this.wallet.linkedEthWalletName;
+  }
+
+  public isUtxoCoin(): boolean {
+    return this.currencyProvider.isUtxoCoin(this.wallet.coin);
   }
 }

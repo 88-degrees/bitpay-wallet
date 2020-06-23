@@ -9,6 +9,7 @@ import { BackupGamePage } from '../backup-game/backup-game';
 // providers
 import { ActionSheetProvider } from '../../../providers/action-sheet/action-sheet';
 import { BwcErrorProvider } from '../../../providers/bwc-error/bwc-error';
+import { ErrorsProvider } from '../../../providers/errors/errors';
 import { KeyProvider } from '../../../providers/key/key';
 import { Logger } from '../../../providers/logger/logger';
 import { ProfileProvider } from '../../../providers/profile/profile';
@@ -34,7 +35,8 @@ export class BackupKeyPage {
     private bwcErrorProvider: BwcErrorProvider,
     private translate: TranslateService,
     private actionSheetProvider: ActionSheetProvider,
-    private keyProvider: KeyProvider
+    private keyProvider: KeyProvider,
+    private errorsProvider: ErrorsProvider
   ) {
     this.keyId = this.navParams.data.keyId;
     this.walletGroup = this.profileProvider.getWalletGroup(this.keyId);
@@ -43,15 +45,7 @@ export class BackupKeyPage {
 
   ionViewDidEnter() {
     if (!this.walletGroup.canSign) {
-      const title = this.translate.instant(
-        'Wallet recovery phrase not available'
-      );
-      let err = this.translate.instant(
-        'You can still export it from "Export Wallet" option.'
-      );
-      this.showErrorInfoSheet(err, title);
-      this.navCtrl.pop();
-      this.logger.warn('no mnemonics');
+      this.showNoRecoveryPhraseError();
       return;
     }
 
@@ -62,9 +56,13 @@ export class BackupKeyPage {
         if (_.isEmpty(keys)) {
           this.logger.warn('Empty keys');
         }
-        this.showSafeguardMessage();
         this.credentialsEncrypted = false;
         this.keys = keys;
+        if (!this.keys || !this.keys.mnemonic) {
+          this.showNoRecoveryPhraseError();
+          return;
+        }
+        this.showSafeguardMessage();
         this.setFlow();
       })
       .catch(err => {
@@ -74,10 +72,26 @@ export class BackupKeyPage {
           err.message != 'PASSWORD_CANCELLED'
         ) {
           const title = this.translate.instant('Could not decrypt wallet');
-          this.showErrorInfoSheet(this.bwcErrorProvider.msg(err), title);
+          if (err.message == 'WRONG_PASSWORD') {
+            this.errorsProvider.showWrongEncryptPasswordError();
+          } else {
+            this.showErrorInfoSheet(this.bwcErrorProvider.msg(err), title);
+          }
         }
         this.navCtrl.pop();
       });
+  }
+
+  private showNoRecoveryPhraseError() {
+    const title = this.translate.instant(
+      'Wallet recovery phrase not available'
+    );
+    let err = this.translate.instant(
+      'You can still export it from "Export Wallet" option.'
+    );
+    this.showErrorInfoSheet(err, title);
+    this.navCtrl.pop();
+    this.logger.warn('no mnemonics');
   }
 
   private showErrorInfoSheet(
@@ -86,11 +100,7 @@ export class BackupKeyPage {
   ): void {
     if (!err) return;
     this.logger.warn('Could not get keys:', err);
-    const errorInfoSheet = this.actionSheetProvider.createInfoSheet(
-      'default-error',
-      { msg: err, title: infoSheetTitle }
-    );
-    errorInfoSheet.present();
+    this.errorsProvider.showDefaultError(err, infoSheetTitle);
   }
 
   public goToBackupGame(): void {

@@ -9,11 +9,11 @@ import { Clipboard } from '@ionic-native/clipboard';
 import { SocialSharing } from '@ionic-native/social-sharing';
 
 // providers
-import { ActionSheetProvider } from '../../../../../providers/action-sheet/action-sheet';
 import { AppProvider } from '../../../../../providers/app/app';
 import { BackupProvider } from '../../../../../providers/backup/backup';
 import { BwcErrorProvider } from '../../../../../providers/bwc-error/bwc-error';
 import { ConfigProvider } from '../../../../../providers/config/config';
+import { ErrorsProvider } from '../../../../../providers/errors/errors';
 import { PersistenceProvider } from '../../../../../providers/persistence/persistence';
 import { PlatformProvider } from '../../../../../providers/platform/platform';
 import { ProfileProvider } from '../../../../../providers/profile/profile';
@@ -35,9 +35,6 @@ export class WalletExportPage {
   public isCordova: boolean;
   public isSafari: boolean;
   public isIOS: boolean;
-  public exportWalletInfo;
-  public supported: boolean;
-  public showNoPrivKeyOpt: boolean;
 
   constructor(
     private profileProvider: ProfileProvider,
@@ -54,9 +51,9 @@ export class WalletExportPage {
     private clipboard: Clipboard,
     private toastCtrl: ToastController,
     private translate: TranslateService,
-    private actionSheetProvider: ActionSheetProvider,
     private configProvider: ConfigProvider,
-    private bwcErrorProvider: BwcErrorProvider
+    private bwcErrorProvider: BwcErrorProvider,
+    private errorsProvider: ErrorsProvider
   ) {
     this.password = '';
     this.showAdv = false;
@@ -69,7 +66,6 @@ export class WalletExportPage {
       },
       { validator: this.matchingPasswords('password', 'confirmPassword') }
     );
-    this.showNoPrivKeyOpt = this.navParams.data.showNoPrivKeyOpt;
   }
 
   ionViewDidLoad() {
@@ -114,22 +110,6 @@ export class WalletExportPage {
     });
   }
 
-  public noSignEnabledChange(): void {
-    if (!this.supported) return;
-
-    this.walletProvider
-      .getEncodedWalletInfo(this.wallet)
-      .then((code: string) => {
-        this.supported = true;
-        this.exportWalletInfo = code;
-      })
-      .catch(err => {
-        this.logger.error(err);
-        this.supported = false;
-        this.exportWalletInfo = null;
-      });
-  }
-
   public downloadWalletBackup(): void {
     this.getPassword()
       .then((password: string) => {
@@ -163,8 +143,13 @@ export class WalletExportPage {
           err &&
           err.message != 'FINGERPRINT_CANCELLED' &&
           err.message != 'PASSWORD_CANCELLED'
-        )
-          this.showErrorInfoSheet(this.bwcErrorProvider.msg(err));
+        ) {
+          if (err.message == 'WRONG_PASSWORD') {
+            this.errorsProvider.showWrongEncryptPasswordError();
+          } else {
+            this.showErrorInfoSheet(this.bwcErrorProvider.msg(err));
+          }
+        }
       });
   }
 
@@ -223,8 +208,13 @@ export class WalletExportPage {
             err &&
             err.message != 'FINGERPRINT_CANCELLED' &&
             err.message != 'PASSWORD_CANCELLED'
-          )
-            this.showErrorInfoSheet(this.bwcErrorProvider.msg(err));
+          ) {
+            if (err.message == 'WRONG_PASSWORD') {
+              this.errorsProvider.showWrongEncryptPasswordError();
+            } else {
+              this.showErrorInfoSheet(this.bwcErrorProvider.msg(err));
+            }
+          }
           return resolve();
         });
     });
@@ -320,10 +310,6 @@ export class WalletExportPage {
     const title = this.translate.instant('Error');
     const msg = err ? err : this.translate.instant('Failed to export');
     this.logger.error(err);
-    const errorInfoSheet = this.actionSheetProvider.createInfoSheet(
-      'default-error',
-      { msg, title }
-    );
-    errorInfoSheet.present();
+    this.errorsProvider.showDefaultError(msg, title);
   }
 }

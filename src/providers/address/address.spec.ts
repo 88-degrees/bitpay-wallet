@@ -9,8 +9,15 @@ describe('AddressProvider', () => {
     addressProvider = testBed.get(AddressProvider);
   });
 
-  describe('getCoin and getNetwork', () => {
+  describe('getCoinAndNetwork', () => {
     const testVectors: any[] = [
+      // Bech32
+      ['bc1q9225pawdj2dlwsk3dd8phudsap6vjp7fg3nwdl', 'btc', 'livenet'],
+      [
+        'bitcoin:bc1qua4502zjcsunhm4a25qfm9d30ml5k384vhy62r?amount=0.0001',
+        'btc',
+        'livenet'
+      ],
       // BTCLivenetAddresses
       ['15qT4RJTjs7GSTReEmgXr4LbMjTVQ51LZA', 'btc', 'livenet'],
       ['bitcoin:1CVuVALD6Zo7ms24n3iUXv162kvUzsHr69', 'btc', 'livenet'],
@@ -59,220 +66,38 @@ describe('AddressProvider', () => {
         'BCHTEST:qqycye950l689c98l7z5j43n4484ssnp4y3uu4ramr?amount=0.00090000',
         'bch',
         'testnet'
-      ]
+      ],
+      // ETH Address & URI
+      ['0x1CD7b5A3294c8714DB5c48e56DD11a6d7EAeaB4C', 'eth', 'livenet'],
+      ['etherum:0x1CD7b5A3294c8714DB5c48e56DD11a6d7EAeaB4C', 'eth', 'livenet'],
+      /// XRP Address & URI
+      ['rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF', 'xrp', 'livenet'],
+      ['ripple:rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF', 'xrp', 'livenet']
+    ];
+
+    const testnetVectors: any[] = [
+      // ETH
+      ['0x1CD7b5A3294c8714DB5c48e56DD11a6d7EAeaB4C', 'eth', 'testnet'],
+      ['etherum:0x1CD7b5A3294c8714DB5c48e56DD11a6d7EAeaB4C', 'eth', 'testnet'],
+      // XRP
+      ['rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF', 'xrp', 'testnet'],
+      ['ripple:rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF', 'xrp', 'testnet']
     ];
 
     testVectors.forEach(v => {
       it('address ' + v[0] + ' should be ' + v[1] + ' / ' + v[2], () => {
-        expect(addressProvider.getCoin(v[0])).toEqual(v[1]);
-        expect(addressProvider.getNetwork(v[0])).toEqual(v[2]);
+        let addrData = addressProvider.getCoinAndNetwork(v[0]);
+        expect(addrData.coin).toEqual(v[1]);
+        expect(addrData.network).toEqual(v[2]);
       });
     });
 
-    it('getCoin should return null if we send an invalid address', () => {
-      const address = 'invalidAddress';
-      const result = addressProvider.getCoin(address);
-      expect(result).toBeNull();
-    });
-
-    it('getNetwork should return undefined if we send an invalid address', () => {
-      const address = 'invalidAddress';
-      const result = addressProvider.getNetwork(address);
-      expect(result).toBeUndefined();
-    });
-  });
-
-  describe('checkCoinAndNetworkFromAddr', () => {
-    it('should return true if use correct coin and network for BTC livenet address', () => {
-      let coin = 'btc';
-      let network = 'livenet';
-      let BTCLivenetAddress = '15qT4RJTjs7GSTReEmgXr4LbMjTVQ51LZA';
-      let result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        BTCLivenetAddress
-      );
-      expect(result).toEqual(true);
-
-      BTCLivenetAddress = 'bitcoin:1CVuVALD6Zo7ms24n3iUXv162kvUzsHr69';
-      result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        BTCLivenetAddress
-      );
-      expect(result).toEqual(true);
-    });
-
-    it('should return true if use correct coin and network for BTC testnet address', () => {
-      let coin = 'btc';
-      let network = 'testnet';
-      let BTCTestnetAddress = 'mscoRRUxbicZdUms3EqDr9jwtCmbbPgfcY';
-      let result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        BTCTestnetAddress
-      );
-      expect(result).toEqual(true);
-
-      BTCTestnetAddress = 'bitcoin:n3LHh1WTFSpSVKXNFQo4U5eLAqowCadFHY';
-      result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        BTCTestnetAddress
-      );
-      expect(result).toEqual(true);
-    });
-
-    it('should return true if use correct coin and network for BCH livenet address', () => {
-      let coin = 'bch';
-      let network = 'livenet';
-      let BCHLivenetAddress = 'qq9jk8jskjsmgqnzygwjsghp3knautm2dcnc5e4k7n';
-      let result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        BCHLivenetAddress
-      );
-      expect(result).toEqual(true);
-
-      BCHLivenetAddress =
-        'BITCOINCASH:qz8ds306px5n65gffn8u69vvnksfw6huwyjczrvkh3';
-      result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        BCHLivenetAddress
-      );
-      expect(result).toEqual(true);
-    });
-
-    it('should return true if use correct coin and network for BCH testnet address', () => {
-      let coin = 'bch';
-      let network = 'testnet';
-      let BCHTestnetAddress = 'qqr99gt5qdk4qyaxxvzeapgjuxkg6x9ueue95fakj7';
-      let result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        BCHTestnetAddress
-      );
-      expect(result).toEqual(true);
-
-      // TODO: we have to update BWS with bitcore-lib-cash version 0.18.1 to get correct values for BCHTEST prefix
-      /* BCHTestnetAddress = 'BCHTEST:qqycye950l689c98l7z5j43n4484ssnp4y3uu4ramr';
-      result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        BCHTestnetAddress
-      );
-      expect(result).toEqual(true); */
-    });
-
-    it('should return false if we send an invalid address, coin or network', () => {
-      let coin = 'btc';
-      let network = 'livenet';
-      let address = 'invalidAddress';
-      let result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        address
-      );
-      expect(result).toBeFalsy();
-
-      coin = 'btc';
-      network = 'testnet';
-      address = '1CVuVALD6Zo7ms24n3iUXv162kvUzsHr69'; // BTC livenet
-      result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        address
-      );
-      expect(result).toBeFalsy();
-
-      coin = 'bch';
-      network = 'livenet';
-      address = 'bitcoin:1CVuVALD6Zo7ms24n3iUXv162kvUzsHr69'; // BTC livenet
-      result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        address
-      );
-      expect(result).toBeFalsy();
-
-      coin = 'bch';
-      network = 'testnet';
-      address = 'bitcoincash:qz8ds306px5n65gffn8u69vvnksfw6huwyjczrvkh3'; // BCH livenet
-      result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        address
-      );
-      expect(result).toBeFalsy();
-
-      coin = 'btc';
-      network = 'livenet';
-      address = 'BITCOINCASH:qz8ds306px5n65gffn8u69vvnksfw6huwyjczrvkh3'; // BCH livenet
-      result = addressProvider.checkCoinAndNetworkFromAddr(
-        coin,
-        network,
-        address
-      );
-      expect(result).toBeFalsy();
-    });
-  });
-
-  describe('checkCoinAndNetworkFromPayPro', () => {
-    it('should return true if use correct coin and network for paypro details', () => {
-      let coin = 'btc';
-      let network = 'livenet';
-      let payproDetails = {
-        coin: 'btc',
-        network: 'livenet'
-      };
-      let result = addressProvider.checkCoinAndNetworkFromPayPro(
-        coin,
-        network,
-        payproDetails
-      );
-      expect(result).toEqual(true);
-
-      coin = 'bch';
-      network = 'livenet';
-      payproDetails = {
-        coin: 'bch',
-        network: 'livenet'
-      };
-      result = addressProvider.checkCoinAndNetworkFromPayPro(
-        coin,
-        network,
-        payproDetails
-      );
-      expect(result).toEqual(true);
-    });
-
-    it('should return false if use incorrect coin or network for paypro details', () => {
-      let coin = 'btc';
-      let network = 'testnet';
-      let payproDetails = {
-        coin: 'btc',
-        network: 'livenet'
-      };
-      let result = addressProvider.checkCoinAndNetworkFromPayPro(
-        coin,
-        network,
-        payproDetails
-      );
-      expect(result).toEqual(false);
-
-      coin = 'bch';
-      network = 'livenet';
-      payproDetails = {
-        coin: 'btc',
-        network: 'livenet'
-      };
-      result = addressProvider.checkCoinAndNetworkFromPayPro(
-        coin,
-        network,
-        payproDetails
-      );
-      expect(result).toEqual(false);
+    testnetVectors.forEach(v => {
+      it('address ' + v[0] + ' should be ' + v[1] + ' / ' + v[2], () => {
+        let addrData = addressProvider.getCoinAndNetwork(v[0], 'testnet');
+        expect(addrData.coin).toEqual(v[1]);
+        expect(addrData.network).toEqual(v[2]);
+      });
     });
   });
 
@@ -289,6 +114,11 @@ describe('AddressProvider', () => {
       address = 'bitcoin:1CVuVALD6Zo7ms24n3iUXv162kvUzsHr69?amount=0.00090000'; // BTC livenet uri
       result = addressProvider.extractAddress(address);
       expect(result).toEqual('1CVuVALD6Zo7ms24n3iUXv162kvUzsHr69');
+
+      address =
+        'bitcoin:bc1qua4502zjcsunhm4a25qfm9d30ml5k384vhy62r?amount=0.00010000'; // Native segwit
+      result = addressProvider.extractAddress(address);
+      expect(result).toEqual('bc1qua4502zjcsunhm4a25qfm9d30ml5k384vhy62r');
     });
 
     it('should return the correct extracted address for BCH', () => {
@@ -314,9 +144,53 @@ describe('AddressProvider', () => {
       result = addressProvider.extractAddress(address);
       expect(result).toEqual('qz8ds306px5n65gffn8u69vvnksfw6huwyjczrvkh3');
     });
+
+    it('should return the correct extracted address for ETH', () => {
+      let address = '0x32ed5be73f5c395621287f5cbe1da96caf3c5dec'; // ETH livenet
+      let result = addressProvider.extractAddress(address);
+      expect(result).toEqual('0x32ed5be73f5c395621287f5cbe1da96caf3c5dec');
+
+      address = 'ethereum:0x32ed5be73f5c395621287f5cbe1da96caf3c5dec'; // ETH livenet with prefix
+      result = addressProvider.extractAddress(address);
+      expect(result).toEqual('0x32ed5be73f5c395621287f5cbe1da96caf3c5dec');
+
+      address =
+        'ethereum:0x32ed5be73f5c395621287f5cbe1da96caf3c5dec?value=1234567890'; // ETH livenet uri
+      result = addressProvider.extractAddress(address);
+      expect(result).toEqual('0x32ed5be73f5c395621287f5cbe1da96caf3c5dec');
+    });
+
+    it('should return the correct extracted address for XRP', () => {
+      let address = 'rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF'; // XRP livenet
+      let result = addressProvider.extractAddress(address);
+      expect(result).toEqual('rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF');
+
+      address = 'ripple:rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF'; // XRP livenet with prefix
+      result = addressProvider.extractAddress(address);
+      expect(result).toEqual('rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF');
+
+      address = 'ripple:rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF?amount=12'; // XRP livenet uri
+      result = addressProvider.extractAddress(address);
+      expect(result).toEqual('rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF');
+    });
   });
 
   describe('isValid', () => {
+    it('should return true for addresses of BTC livenet native segwit', () => {
+      let address = 'bc1qua4502zjcsunhm4a25qfm9d30ml5k384vhy62r'; // BTC livenet
+      let result = addressProvider.isValid(address);
+      expect(result).toEqual(true);
+
+      address = 'bitcoin:bc1qua4502zjcsunhm4a25qfm9d30ml5k384vhy62r'; // BTC livenet with prefix
+      result = addressProvider.isValid(address);
+      expect(result).toEqual(true);
+
+      address =
+        'bitcoin:bc1qua4502zjcsunhm4a25qfm9d30ml5k384vhy62r?amount=0.00090000'; // BTC livenet uri
+      result = addressProvider.isValid(address);
+      expect(result).toEqual(true);
+    });
+
     it('should return true for addresses of BTC livenet', () => {
       let address = '1CVuVALD6Zo7ms24n3iUXv162kvUzsHr69'; // BTC livenet
       let result = addressProvider.isValid(address);
@@ -327,6 +201,35 @@ describe('AddressProvider', () => {
       expect(result).toEqual(true);
 
       address = 'bitcoin:1CVuVALD6Zo7ms24n3iUXv162kvUzsHr69?amount=0.00090000'; // BTC livenet uri
+      result = addressProvider.isValid(address);
+      expect(result).toEqual(true);
+    });
+
+    it('should return true for addresses of ETH livenet', () => {
+      let address = '0x32ed5be73f5c395621287f5cbe1da96caf3c5dec'; // ETH livenet
+      let result = addressProvider.isValid(address);
+      expect(result).toEqual(true);
+
+      address = 'ethereum:0x32ed5be73f5c395621287f5cbe1da96caf3c5dec'; // ETH livenet with prefix
+      result = addressProvider.isValid(address);
+      expect(result).toEqual(true);
+
+      address =
+        'ethereum:0x32ed5be73f5c395621287f5cbe1da96caf3c5dec?value=1234567890'; // ETH livenet uri
+      result = addressProvider.isValid(address);
+      expect(result).toEqual(true);
+    });
+
+    it('should return true for addresses of XRP livenet', () => {
+      let address = 'rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF'; // XRP livenet
+      let result = addressProvider.isValid(address);
+      expect(result).toEqual(true);
+
+      address = 'ripple:rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF'; // XRP livenet with prefix
+      result = addressProvider.isValid(address);
+      expect(result).toEqual(true);
+
+      address = 'ripple:rEqj9WKSH7wEkPvWf6b4gCi26Y3F7HbKUF?amount=12'; // XRP livenet uri
       result = addressProvider.isValid(address);
       expect(result).toEqual(true);
     });
@@ -382,6 +285,15 @@ describe('AddressProvider', () => {
       expect(result).toEqual(false);
 
       address = 'bchtest:1CVuVALD6Zo7ms24n3iUXv162kvUzsHr69?amount=invalid';
+      result = addressProvider.isValid(address);
+      expect(result).toEqual(false);
+
+      address =
+        'ethereum:0x32ed5be73f5c395621287f5cbe1da96caf3c5?value=invalid';
+      result = addressProvider.isValid(address);
+      expect(result).toEqual(false);
+
+      address = 'ripple:rEqj9WKSH7wEkPvWf6b4gCi26Y3F7H?value=invalid';
       result = addressProvider.isValid(address);
       expect(result).toEqual(false);
     });

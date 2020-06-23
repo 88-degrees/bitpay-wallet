@@ -1,6 +1,13 @@
 card-details-page {
   $background-color: white;
-  @include fix-ios-bg-scroll($background-color);
+
+  .confetti-root {
+    display: flex;
+    justify-content: center;
+    position: relative;
+    transform: translateY(200px);
+    z-index: 1000;
+  }
 
   .wrapper {
     padding: 0 $gift-card-page-padding;
@@ -23,11 +30,14 @@ card-details-page {
 
   .card-image {
     img {
+      background: white;
       position: relative;
       z-index: 1;
       max-width: 82%;
       height: auto;
       width: 265px;
+      min-height: 130px;
+      min-width: 210px;
     }
 
     + .actions-wrapper {
@@ -110,6 +120,11 @@ card-details-page {
       height: 75px;
       margin: 5px auto -5px;
       filter: invert(3%);
+    }
+
+    ngx-qrcode {
+      position: relative;
+      top: 7px;
     }
 
     ngx-barcode.card-info__body {

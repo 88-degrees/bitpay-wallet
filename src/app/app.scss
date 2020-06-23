@@ -20,10 +20,54 @@ body {
   line-height: 22px;
 }
 
+// all content without menu
+ion-content.add-bottom-safe-area {
+  .fixed-content,
+  .scroll-content {
+    padding-bottom: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom));
+    padding-bottom: -webkit-calc(env(safe-area-inset-bottom));
+  }
+}
+
+// expandable views
+ion-content.add-padding-bottom,
+.add-padding-bottom ion-content {
+  .fixed-content,
+  .scroll-content {
+    padding-bottom: 120px;
+    padding-bottom: calc(120px + env(safe-area-inset-bottom));
+    padding-bottom: -webkit-calc(120px + env(safe-area-inset-bottom));
+  }
+}
+
+ion-title.bp-title {
+  .toolbar-title.toolbar-title-md,
+  .toolbar-title.toolbar-title-ios {
+    font-weight: 700 !important;
+  }
+}
+
 // Alert position
 // --------------------------------------------------
 ion-alert.alert-top {
   align-items: center;
+}
+
+ion-alert {
+  .alert-wrapper {
+    color: black;
+
+    .alert-title {
+      color: black;
+    }
+  }
+
+  .alert-radio-group {
+    .alert-radio:not([aria-checked='true']) .alert-radio-label {
+      color: black;
+    }
+  }
 }
 
 // Text wrap
@@ -43,13 +87,73 @@ ion-label {
   -webkit-box-orient: vertical;
 }
 
+// Header
+// --------------------------------------------------
+ion-header.bp-header .toolbar {
+  ion-title {
+    padding: 0;
+
+    .toolbar-title.toolbar-title-md,
+    .toolbar-title.toolbar-title-ios {
+      font-size: 18px;
+      font-weight: 700;
+    }
+  }
+}
+
+.wide-header__title {
+  color: $text-color;
+  font-size: 25px;
+  font-weight: 700;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-left: 20px;
+  background: $background-color;
+}
+
+.close-container {
+  margin-left: 13px !important;
+  height: 41px;
+  width: 41px;
+  border-radius: 50%;
+  background-color: rgba(155, 163, 174, 0.2);
+  color: #d8d8d8;
+  box-shadow: none;
+
+  &.button-ios {
+    margin: 0;
+  }
+
+  &.button-md.activated,
+  &.button-ios.activated {
+    background-color: rgba(155, 163, 174, 0.2);
+    box-shadow: none;
+  }
+}
+
+.option-button {
+  font-size: 24px;
+  opacity: 0.6;
+  border-radius: none;
+  background-color: transparent !important;
+  margin: 0 5px;
+  color: #434d5a;
+
+  &.activated,
+  &:hover:not(.disable-hover) {
+    color: #434d5a;
+  }
+}
+
 // Buttons
 // --------------------------------------------------
 .bottom-absolute {
   width: 100%;
   position: absolute;
-  bottom: 0px;
+  bottom: 0;
+  bottom: calc(env(safe-area-inset-bottom));
   padding: 15px 15px calc(5vw + 1vh) 15px;
+  padding: 15px 15px -webkit-calc(5vw + 1vh) 15px;
 
   .button {
     margin: 1.2rem auto;
@@ -64,20 +168,9 @@ ion-label {
   font-size: 18px;
 }
 
-// Hide border when refresh
-.has-refresher > .scroll-content {
-  border-top: none !important;
-}
-
-.scroll-content {
-  .wrapper {
-    background-color: white;
-    min-height: 100%;
-
-    &--feather {
-      background-color: $feather-dark;
-    }
-  }
+/* Refresh component */
+ion-refresher-content {
+  justify-content: normal;
 }
 
 ion-spinner * {
@@ -109,37 +202,31 @@ ion-spinner * {
   align-items: center;
 }
 
-// Prevent the names of the tabs from disappearing
-.tabbar .tab-button .tab-button-text {
-  display: block;
-}
-
-.toolbar.toolbar-md .back-button {
-  margin: -7px 0 0 0;
-}
-
-.tabbar {
-  .tabs-md &,
-  .tabs-ios & {
-    background: white;
+.toolbar.toolbar-md,
+.toolbar.toolbar-ios {
+  .back-button-md {
+    min-width: 41px;
   }
 
-  .tabs-ios & {
-    .tab-button-icon {
-      height: 22px;
+  .back-button {
+    margin-left: 15px;
+    height: 41px;
+    width: 41px;
+    border-radius: 50%;
+    background-color: rgba(155, 163, 174, 0.12);
+    color: #d8d8d8;
+    box-shadow: none;
+
+    .back-button-icon-md {
+      padding: 0px 0px 32px 4px;
+
+      &::before {
+        font-size: 14px;
+      }
     }
-  }
 
-  justify-content: center;
-  padding-top: 5px;
-  transform: translate3d(0, 0, 0);
-
-  .tab-button {
-    max-width: 15vw;
-    min-width: 80px; // Prevent the names of the tabs from disappearing
-
-    .tab-button-text {
-      display: block;
+    .back-button-icon-ios {
+      margin: 2px 2px 0px 0px;
     }
   }
 }
@@ -168,8 +255,31 @@ ion-spinner * {
   height: $icon-dim;
   width: $icon-dim;
   margin-right: 16px;
+
   &.disabled {
     background-color: color($colors, grey);
+  }
+}
+
+.btc-background {
+  background-color: #f7931a;
+}
+
+.bch-background {
+  background-color: #2fcf6e;
+}
+
+.eth-background {
+  background-color: #6b71d6;
+}
+
+.xrp-background {
+  background-color: #000000;
+}
+
+button.item {
+  &.activated {
+    background-color: $feather;
   }
 }
 
@@ -182,6 +292,10 @@ ion-spinner * {
 
 .testnet {
   filter: grayscale(100%);
+}
+
+.background_xrp.testnet {
+  filter: opacity(0.4);
 }
 
 .icon-card {
@@ -268,8 +382,8 @@ ion-spinner * {
 }
 
 .gravatar {
-  min-width: 3rem;
-  min-height: 3rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
 }
 
 // Compatibility Ionic 1
@@ -355,10 +469,22 @@ a.royal {
   }
 }
 
+.search-container {
+  background-color: #ffffff;
+}
+
+.search-wrapper {
+  background-color: #f8f8f8;
+  display: flex;
+  align-items: baseline;
+  border-radius: 8px;
+
+  .text-input-ios {
+    margin: 16px 8px 16px 8px;
+  }
+}
+
 // Set backgrounds transparent so the QR Scanner can be seen behind the app.
-html,
-body,
-.back-transparent,
 ion-app,
 .nav-decor {
   background: transparent !important;
@@ -370,7 +496,7 @@ ion-app,
   margin-left: auto;
   margin-right: auto;
   display: flex;
-  min-height: 57px;
+  min-height: 60px;
   margin-top: 1.5rem;
   margin-bottom: 1.5rem;
   border-radius: 5px;
@@ -410,7 +536,7 @@ ion-app,
   &.activated {
     &.button-md,
     &.button-ios {
-      background-color: #e5e5e5;
+      background-color: $feather;
     }
   }
 }
@@ -443,18 +569,6 @@ ion-alert .alert-message {
   top: $toolbar-ios-height;
 }
 
-.hide-tabbar {
-  .tabbar {
-    display: none !important;
-  }
-
-  .fullscreen-tab {
-    .scroll-content {
-      margin-bottom: 0 !important;
-    }
-  }
-}
-
 .header-extend {
   background: $toolbar-background;
   height: 180px;
@@ -467,43 +581,41 @@ ion-alert .alert-message {
 }
 
 .section-header {
-  color: rgba(0, 0, 0, 0.3);
-  font-weight: 600;
-  margin: 0 auto;
-  margin-bottom: -7px;
-  width: 92%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #9b9bab;
+  font-size: 16px;
+  font-weight: 500;
+  margin: 20px 16px 10px 20px;
 }
 
-button.modal-close-button {
-  font-size: 16px;
-  font-weight: 400;
+.key-name {
+  margin-left: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
 
-  ion-icon {
-    font-size: 26px;
-  }
+.close-container.button-default {
+  color: color($colors, dark);
+  box-shadow: none;
 }
 
 .qr-container {
-  flex-grow: 1;
   @include center;
-  background: linear-gradient(#ececec, white);
-
-  .qr-placeholder {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
+  height: 293px;
 
   .qr-card {
-    border: 1px solid rgb(207, 207, 207);
-    border-radius: 7px;
-    transform: translateY(0);
     margin: 0;
     padding-bottom: 0;
-    width: 70%;
     max-width: 293px;
     max-height: 293px;
     box-shadow: none;
+
+    img {
+      height: auto;
+      width: 100%;
+    }
 
     .aclass {
       @include center;
@@ -514,14 +626,7 @@ button.modal-close-button {
       filter: grayscale(100%);
       height: 100%;
       width: 100%;
-      opacity: 0.715;
     }
-  }
-
-  .qr-placeholder:after {
-    content: '';
-    display: block;
-    padding-bottom: 100%;
   }
 }
 
@@ -554,21 +659,19 @@ ion-item.with-label.item {
   box-shadow: none !important;
 }
 
-// Remove arrowhead from label
-label-tip.warn.no-arrowhead:before {
-  display: none;
-}
-
 .slide-confirm-down {
-  transform: translate(0px, 90px);
+  transform: translate(0px, 200px);
+  -webkit-transform: translate(0px, 200px);
 }
 
 .slide-confirm-slow {
-  transition: transform 0.7s;
+  transition: transform 0.6s;
+  -webkit-transition: -webkit-transform 0.6s;
 }
 
 .slide-confirm-fast {
-  transition: transform 0.3s;
+  transition: transform 0.2s;
+  -webkit-transition: -webkit-transform 0.2s;
 }
 
 .reorder-done {
@@ -590,21 +693,7 @@ label-tip.warn.no-arrowhead:before {
   }
 }
 
-.app-color {
-  .toolbar-background {
-    background: #14245e !important;
-  }
-}
-
-page-wallet-details,
-page-receive,
-page-send,
-page-amount,
-page-multi-send,
-page-bitpay-card-intro,
-page-bitpay-card,
-page-shapeshift,
-.wallet-details-header {
+page-bitpay-card {
   @include toolbar-button-color(white);
 
   ion-title .toolbar-title {
@@ -612,16 +701,12 @@ page-shapeshift,
     font-weight: 75;
   }
 
-  button.modal-close-button.bar-button {
-    margin-top: -1px;
-    color: white;
-  }
   ion-title {
     &.title-ios {
-      padding: 0 50px 1px;
+      padding: 0 70px 1px;
     }
+
     .toolbar-title {
-      text-align: left;
       opacity: 0.7;
       font-weight: 600;
     }
@@ -659,4 +744,131 @@ page-shapeshift,
       margin-left: 5px;
     }
   }
+}
+
+.icon-plus {
+  -webkit-mask-box-image: url(../assets/img/icon-plus.svg);
+  height: 18px;
+  width: 18px;
+  background-color: #cdd1d8;
+  mask-repeat: no-repeat;
+  mask-position: 50% 50%;
+  mask-size: 2rem;
+  margin: auto;
+  transform: translate(0, -10%);
+}
+
+.tabbar {
+  height: 10vh;
+
+  .tabs-md &,
+  .tabs-ios & {
+    background: white;
+  }
+
+  .tabs-ios & {
+    .tab-button-icon {
+      height: 22px;
+    }
+  }
+
+  justify-content: center;
+  padding-top: 5px;
+  transform: translate3d(0, 0, 0);
+
+  .tab-button {
+    max-width: 15vw;
+    min-width: 80px; // Prevent the names of the tabs from disappearing
+
+    .tab-button-text {
+      display: block;
+    }
+  }
+}
+
+ion-tabs {
+  &:after {
+    // Workaround to prevent tabs from disappearing when activated
+    position: absolute;
+    display: none;
+    content: url('../assets/img/tab-icons/tab-home-active.svg')
+      url('../assets/img/tab-icons/tab-wallets-active.svg')
+      url('../assets/img/tab-icons/tab-cards-active.svg')
+      url('../assets/img/tab-icons/tab-settings-active.svg');
+  }
+
+  .tab-badge {
+    font-family: 'Roboto';
+  }
+}
+
+$home-active: url('../assets/img/tab-icons/tab-home-active.svg') no-repeat 50%
+  50%;
+$home-inactive: url('../assets/img/tab-icons/tab-home.svg') no-repeat 50% 50%;
+$wallets-active: url('../assets/img/tab-icons/tab-wallets-active.svg') no-repeat
+  50% 50%;
+$wallets-inactive: url('../assets/img/tab-icons/tab-wallets.svg') no-repeat 50%
+  50%;
+$cards-active: url('../assets/img/tab-icons/tab-cards-active.svg') no-repeat 50%
+  50%;
+$cards-inactive: url('../assets/img/tab-icons/tab-cards.svg') no-repeat 50% 50%;
+$settings-active: url('../assets/img/tab-icons/tab-settings-active.svg')
+  no-repeat 50% 50%;
+$settings-inactive: url('../assets/img/tab-icons/tab-settings.svg') no-repeat
+  50% 50%;
+
+ion-icon {
+  &[class*='tab-'] {
+    margin: 0 5px 0 0;
+    vertical-align: middle;
+    $sz: 20px;
+    width: $sz;
+    height: $sz;
+  }
+
+  &[class*='tab-home'] {
+    background: $home-inactive;
+    background-size: contain;
+
+    .tab-button[aria-selected='true'] & {
+      background: $home-active;
+      background-size: contain;
+    }
+  }
+
+  &[class*='tab-wallets'] {
+    background: $wallets-inactive;
+    background-size: contain;
+
+    .tab-button[aria-selected='true'] & {
+      background: $wallets-active;
+      background-size: contain;
+    }
+  }
+
+  &[class*='tab-cards'] {
+    background: $cards-inactive;
+    background-size: contain;
+
+    .tab-button[aria-selected='true'] & {
+      background: $cards-active;
+      background-size: contain;
+    }
+  }
+
+  &[class*='tab-settings'] {
+    background: $settings-inactive;
+    background-size: contain;
+
+    .tab-button[aria-selected='true'] & {
+      background: $settings-active;
+      background-size: contain;
+    }
+  }
+}
+
+.line-divider {
+  box-sizing: border-box;
+  border: 0.5px solid rgba(155, 163, 174, 0.1);
+  margin: 0px 25px;
 }

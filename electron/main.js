@@ -26,7 +26,10 @@ function createWindow() {
     minWidth: 400,
     maxWidth: 800,
     minHeight: 650,
-    show: false
+    show: false,
+    webPreferences: {
+      nodeIntegration: true
+    }
   });
 
   // and load the index.html of the app.
@@ -125,9 +128,10 @@ function createMenu() {
 app.setAsDefaultProtocolClient('bitcoin');
 app.setAsDefaultProtocolClient('bitcoincash');
 app.setAsDefaultProtocolClient('bchtest');
+app.setAsDefaultProtocolClient('ethereum');
 app.setAsDefaultProtocolClient(appConfig.name);
 app.setVersion(appConfig.version);
-app.setName(appConfig.nameCase);
+app.name = appConfig.nameCase;
 
 const getHomeDirPath = platform => {
   switch (platform) {

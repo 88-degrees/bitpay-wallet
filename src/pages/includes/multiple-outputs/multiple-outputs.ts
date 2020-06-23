@@ -4,6 +4,7 @@ import * as _ from 'lodash';
 // Providers
 import { AddressBookProvider } from '../../../providers/address-book/address-book';
 import { AddressProvider } from '../../../providers/address/address';
+import { Coin } from '../../../providers/currency/currency';
 import { Logger } from '../../../providers/logger/logger';
 import { WalletProvider } from '../../../providers/wallet/wallet';
 
@@ -12,6 +13,7 @@ import { WalletProvider } from '../../../providers/wallet/wallet';
   templateUrl: 'multiple-outputs.html'
 })
 export class MultipleOutputsPage {
+  public coin: Coin;
   private _tx;
 
   public contactName: string;
@@ -31,15 +33,18 @@ export class MultipleOutputsPage {
     this._tx = tx;
     this.tx.outputs.forEach(output => {
       const outputAddr = output.toAddress ? output.toAddress : output.address;
-      const coin = this._tx.coin
+      this.coin = this._tx.coin
         ? this._tx.coin
-        : this.addressProvider.getCoin(outputAddr);
+        : this.addressProvider.getCoinAndNetwork(outputAddr, this._tx.network)
+            .coin;
 
-      output.addressToShow = this.walletProvider.getAddressView(
-        coin,
+      const addressToShow = this.walletProvider.getAddressView(
+        this.coin,
         this._tx.network,
         outputAddr
       );
+      output.addressToShow =
+        addressToShow == 'false' ? 'Unparsed address' : addressToShow;
     });
 
     this.contact();

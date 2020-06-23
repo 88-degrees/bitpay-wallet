@@ -1,6 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, ViewChild } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
-import { NavController } from 'ionic-angular';
+import { NavController, Slides } from 'ionic-angular';
 import { Logger } from '../../../providers/logger/logger';
 
 import { TabsPage } from '../../tabs/tabs';
@@ -14,6 +14,9 @@ import { PersistenceProvider } from '../../../providers/persistence/persistence'
   templateUrl: 'disclaimer.html'
 })
 export class DisclaimerPage {
+  @ViewChild('walletGroupOnboardingSlides')
+  walletGroupOnboardingSlides: Slides;
+
   public accepted;
   public terms;
   public hasEmail: boolean;
@@ -39,6 +42,27 @@ export class DisclaimerPage {
 
   ionViewDidLoad() {
     this.logger.info('Loaded: DisclaimerPage');
+  }
+
+  ionViewWillLoad() {
+    this.walletGroupOnboardingSlides.lockSwipeToPrev(true);
+  }
+
+  public slideChanged() {
+    // Disable first and last slides bounce
+    let currentIndex = this.walletGroupOnboardingSlides.getActiveIndex();
+    if (currentIndex == 0)
+      this.walletGroupOnboardingSlides.lockSwipeToPrev(true);
+    if (currentIndex > 0)
+      this.walletGroupOnboardingSlides.lockSwipeToPrev(false);
+    if (currentIndex >= 3)
+      this.walletGroupOnboardingSlides.lockSwipeToNext(true);
+    if (currentIndex < 3)
+      this.walletGroupOnboardingSlides.lockSwipeToNext(false);
+  }
+
+  public nextSlide(): void {
+    this.walletGroupOnboardingSlides.slideNext();
   }
 
   selectTerms() {

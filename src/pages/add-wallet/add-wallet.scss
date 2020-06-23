@@ -1,28 +1,37 @@
 page-add-wallet {
-  .list-button {
-    padding-top: 10px;
-    padding-bottom: 10px;
-
-    .item-title {
-      color: black;
-      font-size: 18px;
-      font-weight: 500;
+  .button-default {
+    color: color($colors, dark);
+    box-shadow: none;
+  }
+  .bp-list {
+    .main-label {
+      font-weight: 400;
     }
-
-    .item-subtitle {
-      color: black;
-      font-size: 16px;
-      white-space: normal;
+    ion-item-divider {
+      margin-top: 0px;
+      padding: 12.5px 0px 12.5px 20px;
+      background: #f8f8f9;
     }
-
-    ion-icon.item-icon {
-      margin-left: 3px;
-
-      img {
-        $icon-dimension: 40px;
-        height: $icon-dimension;
-        width: $icon-dimension;
+    ion-icon.item-img.icon {
+      &.icon-md.item-icon,
+      &.icon-ios.item-icon {
+        padding: 14.5px;
+        &.icon-settings {
+          opacity: 0.5;
+        }
+        img {
+          width: 20px;
+          height: 20px;
+        }
       }
+    }
+    ion-note.note {
+      background: #f4f5fb;
+      color: #565d6d;
+      font-weight: 300;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 14px;
     }
   }
 }

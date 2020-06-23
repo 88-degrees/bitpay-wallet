@@ -1,19 +1,30 @@
 import { Component, Input } from '@angular/core';
-import { NavController, NavParams } from 'ionic-angular';
+import {
+  Events,
+  NavController,
+  NavParams,
+  ViewController
+} from 'ionic-angular';
 import * as _ from 'lodash';
 
 // Providers
 import { AddressBookProvider } from '../../../providers/address-book/address-book';
 import { AddressProvider } from '../../../providers/address/address';
+import {
+  Coin,
+  CoinsMap,
+  CurrencyProvider
+} from '../../../providers/currency/currency';
 import { Logger } from '../../../providers/logger/logger';
 import { PopupProvider } from '../../../providers/popup/popup';
 import { ProfileProvider } from '../../../providers/profile/profile';
-import { Coin, WalletProvider } from '../../../providers/wallet/wallet';
+import { WalletProvider } from '../../../providers/wallet/wallet';
 
 // Pages
 import { AmountPage } from '../amount/amount';
 
 export interface FlatWallet {
+  walletId: string;
   color: string;
   name: string;
   recipientType: 'wallet';
@@ -22,6 +33,8 @@ export interface FlatWallet {
   m: number;
   n: number;
   needsBackup: boolean;
+  keyId: string;
+  walletGroupName: string;
   isComplete: () => boolean;
   getAddress: () => Promise<string>;
 }
@@ -32,15 +45,15 @@ export interface FlatWallet {
 })
 export class TransferToPage {
   public search: string = '';
-  public walletsBtc;
-  public walletsBch;
-  public walletBchList: FlatWallet[];
-  public walletBtcList: FlatWallet[];
+  public wallets = {} as CoinsMap<any>;
+  public hasWallets = {} as CoinsMap<boolean>;
+  public walletList = {} as CoinsMap<FlatWallet[]>;
+  public availableCoins: Coin[];
   public contactsList = [];
   public filteredContactsList = [];
   public filteredWallets = [];
-  public hasBtcWallets: boolean;
-  public hasBchWallets: boolean;
+  public walletsByKeys = [];
+  public filteredWalletsByKeys = [];
   public hasContacts: boolean;
   public contactsShowMore: boolean;
   public amount: string;
@@ -48,12 +61,15 @@ export class TransferToPage {
   public fiatCode: string;
   public _wallet;
   public _useAsModal: boolean;
+  public _fromWalletDetails: boolean;
   public hasContactsOrWallets: boolean;
 
+  private _fromSelectInputs: boolean;
   private CONTACTS_SHOW_LIMIT: number = 10;
   private currentContactsPage: number = 0;
 
   constructor(
+    private currencyProvider: CurrencyProvider,
     private navCtrl: NavController,
     private navParams: NavParams,
     private profileProvider: ProfileProvider,
@@ -61,12 +77,15 @@ export class TransferToPage {
     private addressBookProvider: AddressBookProvider,
     private logger: Logger,
     private popupProvider: PopupProvider,
-    private addressProvider: AddressProvider
+    private addressProvider: AddressProvider,
+    private viewCtrl: ViewController,
+    private events: Events
   ) {
-    this.walletsBtc = this.profileProvider.getWallets({ coin: 'btc' });
-    this.walletsBch = this.profileProvider.getWallets({ coin: 'bch' });
-    this.hasBtcWallets = !_.isEmpty(this.walletsBtc);
-    this.hasBchWallets = !_.isEmpty(this.walletsBch);
+    this.availableCoins = this.currencyProvider.getAvailableCoins();
+    for (const coin of this.availableCoins) {
+      this.wallets[coin] = this.profileProvider.getWallets({ coin });
+      this.hasWallets[coin] = !_.isEmpty(this.wallets[coin]);
+    }
   }
 
   @Input()
@@ -74,9 +93,13 @@ export class TransferToPage {
     this._wallet = this.navParams.data.wallet
       ? this.navParams.data.wallet
       : wallet;
+    for (const coin of this.availableCoins) {
+      this.walletList[coin] = _.compact(this.getWalletsList(coin));
+    }
+    this.walletsByKeys = _.values(
+      _.groupBy(this.walletList[this._wallet.coin], 'keyId')
+    );
 
-    this.walletBchList = this.getBchWalletsList();
-    this.walletBtcList = this.getBtcWalletsList();
     this.updateContactsList();
   }
 
@@ -103,12 +126,32 @@ export class TransferToPage {
     return this._useAsModal;
   }
 
-  private getBchWalletsList(): FlatWallet[] {
-    return this.hasBchWallets ? this.getRelevantWallets(this.walletsBch) : [];
+  @Input()
+  set fromWalletDetails(fromWalletDetails: boolean) {
+    this._fromWalletDetails = fromWalletDetails;
   }
 
-  private getBtcWalletsList(): FlatWallet[] {
-    return this.hasBtcWallets ? this.getRelevantWallets(this.walletsBtc) : [];
+  get fromWalletDetails() {
+    return this._fromWalletDetails;
+  }
+
+  @Input()
+  set fromSelectInputs(fromSelectInputs: boolean) {
+    this._fromSelectInputs = fromSelectInputs;
+  }
+
+  get fromSelectInputs() {
+    return this._fromSelectInputs;
+  }
+
+  public getCoinName(coin: Coin) {
+    return this.currencyProvider.getCoinName(coin);
+  }
+
+  private getWalletsList(coin: string): FlatWallet[] {
+    return this.hasWallets[coin]
+      ? this.getRelevantWallets(this.wallets[coin])
+      : [];
   }
 
   private getRelevantWallets(rawWallets): FlatWallet[] {
@@ -123,44 +166,38 @@ export class TransferToPage {
       if (!this.hasContacts) return;
 
       let contactsList = [];
-      const promises = [];
       _.each(ab, (v, k: string) => {
-        promises.push(
-          this.addressBookProvider.getAddressOrder(k).then(value => {
-            contactsList.push({
-              name: _.isObject(v) ? v.name : v,
-              address: k,
-              order: value,
-              network: this.addressProvider.getNetwork(k),
-              email: _.isObject(v) ? v.email : null,
-              recipientType: 'contact',
-              coin: this.addressProvider.getCoin(k),
-              getAddress: () => Promise.resolve(k)
-            });
-            return Promise.resolve();
-          })
-        );
+        const addrData = this.addressProvider.getCoinAndNetwork(k);
+        contactsList.push({
+          name: _.isObject(v) ? v.name : v,
+          address: k,
+          network: addrData.network,
+          email: _.isObject(v) ? v.email : null,
+          recipientType: 'contact',
+          coin: addrData.coin,
+          getAddress: () => Promise.resolve(k),
+          destinationTag: v.tag
+        });
       });
-
-      Promise.all(promises).then(() => {
-        this.contactsList = contactsList.filter(c =>
-          this.filterIrrelevantRecipients(c)
-        );
-        let shortContactsList = _.clone(
-          this.contactsList.slice(
-            0,
-            (this.currentContactsPage + 1) * this.CONTACTS_SHOW_LIMIT
-          )
-        );
-        this.filteredContactsList = _.clone(shortContactsList);
-        this.contactsShowMore =
-          this.contactsList.length > shortContactsList.length;
-      });
+      contactsList = _.orderBy(contactsList, 'name');
+      this.contactsList = contactsList.filter(c =>
+        this.filterIrrelevantRecipients(c)
+      );
+      let shortContactsList = _.clone(
+        this.contactsList.slice(
+          0,
+          (this.currentContactsPage + 1) * this.CONTACTS_SHOW_LIMIT
+        )
+      );
+      this.filteredContactsList = _.clone(shortContactsList);
+      this.contactsShowMore =
+        this.contactsList.length > shortContactsList.length;
     });
   }
 
   private flattenWallet(wallet): FlatWallet {
     return {
+      walletId: wallet.credentials.walletId,
       color: wallet.color,
       name: wallet.name,
       recipientType: 'wallet',
@@ -168,7 +205,9 @@ export class TransferToPage {
       network: wallet.network,
       m: wallet.credentials.m,
       n: wallet.credentials.n,
-      isComplete: wallet.isComplete(),
+      keyId: wallet.keyId,
+      walletGroupName: wallet.walletGroupName,
+      isComplete: () => wallet.isComplete(),
       needsBackup: wallet.needsBackup,
       getAddress: () => this.walletProvider.getAddress(wallet, false)
     };
@@ -202,19 +241,23 @@ export class TransferToPage {
     } else {
       this.updateContactsList();
       this.filteredWallets = [];
+      this.filteredWalletsByKeys = [];
     }
   }
 
   public searchWallets(): void {
-    if (this.hasBchWallets && this._wallet.coin === 'bch') {
-      this.filteredWallets = this.walletBchList.filter(wallet => {
-        return _.includes(wallet.name.toLowerCase(), this.search.toLowerCase());
-      });
-    }
-    if (this.hasBtcWallets && this._wallet.coin === 'btc') {
-      this.filteredWallets = this.walletBtcList.filter(wallet => {
-        return _.includes(wallet.name.toLowerCase(), this.search.toLowerCase());
-      });
+    for (const coin of this.availableCoins) {
+      if (this.hasWallets[coin] && this._wallet.coin === coin) {
+        this.filteredWallets = this.walletList[coin].filter(wallet => {
+          return _.includes(
+            wallet.name.toLowerCase(),
+            this.search.toLowerCase()
+          );
+        });
+        this.filteredWalletsByKeys = _.values(
+          _.groupBy(this.filteredWallets, 'keyId')
+        );
+      }
     }
   }
 
@@ -235,17 +278,32 @@ export class TransferToPage {
           return;
         }
         this.logger.debug('Got address:' + addr + ' | ' + item.name);
-        this.navCtrl.push(AmountPage, {
-          recipientType: item.recipientType,
-          amount: parseInt(this.navParams.data.amount, 10),
-          toAddress: addr,
-          name: item.name,
-          email: item.email,
-          color: item.color,
-          coin: item.coin,
-          network: item.network,
-          useAsModal: this._useAsModal
-        });
+
+        if (this._fromSelectInputs) {
+          const recipient = {
+            recipientType: item.recipientType,
+            toAddress: addr,
+            name: item.name,
+            email: item.email
+          };
+          this.events.publish('addRecipient', recipient);
+          this.viewCtrl.dismiss();
+        } else {
+          this.navCtrl.push(AmountPage, {
+            walletId: this.navParams.data.wallet.id,
+            recipientType: item.recipientType,
+            amount: parseInt(this.navParams.data.amount, 10),
+            toAddress: addr,
+            name: item.name,
+            email: item.email,
+            color: item.color,
+            coin: item.coin,
+            network: item.network,
+            useAsModal: this._useAsModal,
+            fromWalletDetails: this._fromWalletDetails,
+            destinationTag: item.destinationTag
+          });
+        }
       })
       .catch(err => {
         this.logger.error('Send: could not getAddress', err);

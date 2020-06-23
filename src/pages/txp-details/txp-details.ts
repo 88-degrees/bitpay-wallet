@@ -10,9 +10,10 @@ import { DecimalPipe } from '../../../node_modules/@angular/common';
 import { Logger } from '../../providers/logger/logger';
 
 // providers
-import { ActionSheetProvider } from '../../providers/action-sheet/action-sheet';
 import { BwcErrorProvider } from '../../providers/bwc-error/bwc-error';
 import { ConfigProvider } from '../../providers/config/config';
+import { CurrencyProvider } from '../../providers/currency/currency';
+import { ErrorsProvider } from '../../providers/errors/errors';
 import { FeeProvider } from '../../providers/fee/fee';
 import { OnGoingProcessProvider } from '../../providers/on-going-process/on-going-process';
 import { PayproProvider } from '../../providers/paypro/paypro';
@@ -52,7 +53,6 @@ export class TxpDetailsPage {
   public showMultiplesOutputs: boolean;
   public amount: string;
   public isCordova: boolean;
-  public hideSlideButton: boolean;
 
   private countDown;
 
@@ -67,14 +67,15 @@ export class TxpDetailsPage {
     private onGoingProcessProvider: OnGoingProcessProvider,
     private viewCtrl: ViewController,
     private configProvider: ConfigProvider,
+    private currencyProvider: CurrencyProvider,
     private profileProvider: ProfileProvider,
     private txFormatProvider: TxFormatProvider,
     private translate: TranslateService,
     private modalCtrl: ModalController,
     private decimalPipe: DecimalPipe,
     private payproProvider: PayproProvider,
-    private actionSheetProvider: ActionSheetProvider,
-    private bwcErrorProvider: BwcErrorProvider
+    private bwcErrorProvider: BwcErrorProvider,
+    private errorsProvider: ErrorsProvider
   ) {
     this.showMultiplesOutputs = false;
     let config = this.configProvider.get().wallet;
@@ -92,7 +93,6 @@ export class TxpDetailsPage {
     this.isShared = this.wallet.credentials.n > 1;
     this.canSign = this.wallet.canSign;
     this.color = this.wallet.color;
-    this.hideSlideButton = false;
 
     // To test multiple outputs...
 
@@ -120,7 +120,11 @@ export class TxpDetailsPage {
     this.checkPaypro();
     this.applyButtonText();
 
-    this.amount = this.decimalPipe.transform(this.tx.amount / 1e8, '1.2-6');
+    this.amount = this.decimalPipe.transform(
+      this.tx.amount /
+        this.currencyProvider.getPrecision(this.wallet.coin).unitToSatoshi,
+      '1.2-6'
+    );
   }
 
   ionViewWillLoad() {
@@ -150,12 +154,17 @@ export class TxpDetailsPage {
   };
 
   private displayFeeValues(): void {
+    const chain = this.currencyProvider
+      .getChain(this.wallet.coin)
+      .toLowerCase();
     this.tx.feeFiatStr = this.txFormatProvider.formatAlternativeStr(
-      this.wallet.coin,
+      chain,
       this.tx.fee
     );
-    this.tx.feeRateStr =
-      ((this.tx.fee / (this.tx.amount + this.tx.fee)) * 100).toFixed(2) + '%';
+    if (this.currencyProvider.isUtxoCoin(this.wallet.coin)) {
+      this.tx.feeRateStr =
+        ((this.tx.fee / (this.tx.amount + this.tx.fee)) * 100).toFixed(2) + '%';
+    }
     const feeOpts = this.feeProvider.getFeeOpts();
     this.tx.feeLevelStr = feeOpts[this.tx.feeLevel];
   }
@@ -223,10 +232,13 @@ export class TxpDetailsPage {
           this.paymentTimeControl(this.tx.paypro.expires);
         })
         .catch(err => {
-          this.logger.warn('Error in Payment Protocol: ', err);
+          this.logger.warn(
+            'Error fetching this invoice: ',
+            this.bwcErrorProvider.msg(err)
+          );
           this.paymentExpired = true;
           this.showErrorInfoSheet(
-            err,
+            this.bwcErrorProvider.msg(err),
             this.translate.instant('Error fetching this invoice')
           );
         });
@@ -265,25 +277,24 @@ export class TxpDetailsPage {
       (error as Error).message === 'FINGERPRINT_CANCELLED' ||
       (error as Error).message === 'PASSWORD_CANCELLED'
     ) {
-      this.hideSlideButton = false;
+      return;
+    }
+
+    if ((error as Error).message === 'WRONG_PASSWORD') {
+      this.errorsProvider.showWrongEncryptPasswordError();
       return;
     }
 
     let infoSheetTitle = title ? title : this.translate.instant('Error');
 
-    const errorInfoSheet = this.actionSheetProvider.createInfoSheet(
-      'default-error',
-      { msg: this.bwcErrorProvider.msg(error), title: infoSheetTitle }
+    this.errorsProvider.showDefaultError(
+      this.bwcErrorProvider.msg(error),
+      infoSheetTitle
     );
-    errorInfoSheet.present();
-    errorInfoSheet.onDidDismiss(() => {
-      this.hideSlideButton = false;
-    });
   }
 
   public sign(): void {
     this.loading = true;
-    this.hideSlideButton = true;
     this.walletProvider
       .publishAndSign(this.wallet, this.tx)
       .then(() => {
@@ -422,7 +433,6 @@ export class TxpDetailsPage {
 
   public close(): void {
     this.loading = false;
-    this.hideSlideButton = false;
     this.viewCtrl.dismiss();
   }
 

@@ -1,104 +1,87 @@
 import { Injectable } from '@angular/core';
-import { TranslateService } from '@ngx-translate/core';
 import { Logger } from '../../providers/logger/logger';
 
 // providers
+import { BwcProvider } from '../bwc/bwc';
+import { CurrencyProvider } from '../currency/currency';
 import { OnGoingProcessProvider } from '../on-going-process/on-going-process';
-import { ProfileProvider } from '../profile/profile';
 
 @Injectable()
 export class PayproProvider {
   constructor(
-    private profileProvider: ProfileProvider,
     private logger: Logger,
-    private onGoingProcessProvider: OnGoingProcessProvider,
-    private translate: TranslateService
+    private bwcProvider: BwcProvider,
+    private currencyProvider: CurrencyProvider,
+    private onGoingProcessProvider: OnGoingProcessProvider
   ) {
     this.logger.debug('PayproProvider initialized');
   }
 
-  public getPayProDetails(
-    uri: string,
-    coin: string,
-    disableLoader?: boolean
+  public async getPayProOptions(
+    paymentUrl,
+    disableLoader?: boolean,
+    attempt: number = 1
   ): Promise<any> {
-    const getPayPro = (network: string = 'livenet') => {
-      return new Promise((resolve, reject) => {
-        let wallet = this.profileProvider.getWallets({
-          onlyComplete: true,
-          coin,
-          network
-        })[0];
-
-        if (!wallet && network === 'livenet')
-          return reject('NO_LIVENET_WALLETS');
-        else if (!wallet) return resolve();
-
-        this.logger.debug(`Fetch PayPro Request (${network})...`, uri);
-        if (!disableLoader) {
-          this.onGoingProcessProvider.set('fetchingPayPro');
-        }
-
-        wallet.fetchPayPro(
-          {
-            payProUrl: uri
-          },
-          (err, paypro) => {
-            if (!disableLoader) this.onGoingProcessProvider.clear();
-            if (err) reject(err);
-            else if (paypro && !paypro.verified)
-              reject('Payment Protocol Invalid');
-            else {
-              // URI is needed to identify host
-              paypro.payProUrl = uri;
-              resolve(paypro);
-            }
-          }
-        );
-      });
+    this.logger.info('PayPro Options: try... ' + attempt);
+    const bwc = this.bwcProvider.getPayProV2();
+    const options: any = {
+      paymentUrl
     };
-
-    return getPayPro()
-      .catch(err => {
-        if (err == 'NO_LIVENET_WALLETS' || this.checkIfNetworkError(err)) {
-          return getPayPro('testnet');
-        }
+    if (!disableLoader) {
+      this.onGoingProcessProvider.set('fetchingPayProOptions');
+    }
+    const payOpts = await bwc.getPaymentOptions(options).catch(async err => {
+      this.logger.error('PayPro Options: ERROR', JSON.stringify(err));
+      if (attempt <= 5) {
+        await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
+        return this.getPayProOptions(paymentUrl, disableLoader, ++attempt);
+      } else {
+        if (!disableLoader) this.onGoingProcessProvider.clear();
         throw err;
-      })
-      .catch(err => {
-        if (this.checkIfNetworkError(err)) {
-          return Promise.reject(
-            this.translate.instant(
-              `The key on the response is not trusted for transactions on the 'test' network`
-            )
+      }
+    });
+    if (!disableLoader) this.onGoingProcessProvider.clear();
+    this.logger.info('PayPro Options: SUCCESS');
+    return payOpts;
+  }
+
+  public async getPayProDetails(
+    paymentUrl,
+    coin,
+    disableLoader?: boolean,
+    attempt: number = 1
+  ): Promise<any> {
+    this.logger.info('PayPro Details: try... ' + attempt);
+    const bwc = this.bwcProvider.getPayProV2();
+    const chain = this.currencyProvider.getChain(coin).toUpperCase();
+    const options: any = {
+      paymentUrl,
+      chain,
+      currency: coin.toUpperCase()
+    };
+    if (!disableLoader) {
+      this.onGoingProcessProvider.set('fetchingPayPro');
+    }
+
+    const payDetails = await bwc
+      .selectPaymentOption(options)
+      .catch(async err => {
+        this.logger.error('PayPro Details: ERROR', JSON.stringify(err));
+        if (attempt <= 5) {
+          await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
+          return this.getPayProDetails(
+            paymentUrl,
+            coin,
+            disableLoader,
+            ++attempt
           );
+        } else {
+          if (!disableLoader) this.onGoingProcessProvider.clear();
+          throw err;
         }
-        if (this.checkIfExpiredInvoiceError(err)) {
-          return Promise.reject(
-            this.translate.instant(
-              'The invoice is no longer receiving payments.'
-            )
-          );
-        }
-        return Promise.reject(err.message || err);
       });
-  }
-
-  private checkIfNetworkError(err) {
-    return (
-      err &&
-      err.message &&
-      err.message.match(
-        /The key on the response is not trusted for transactions/
-      )
-    );
-  }
-
-  private checkIfExpiredInvoiceError(err) {
-    return (
-      err &&
-      err.message &&
-      err.message.match(/The invoice is no longer receiving payments/)
-    );
+    if (!disableLoader) this.onGoingProcessProvider.clear();
+    this.logger.info('PayPro Details: SUCCESS');
+    return payDetails;
   }
 }

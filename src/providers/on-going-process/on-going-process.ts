@@ -36,6 +36,9 @@ export class OnGoingProcessProvider {
         'Extracting Wallet information...'
       ),
       fetchingPayPro: this.translate.instant('Fetching payment information...'),
+      fetchingPayProOptions: this.translate.instant(
+        'Fetching payment options...'
+      ),
       generatingCSV: this.translate.instant('Generating .csv file...'),
       gettingFeeLevels: this.translate.instant('Getting fee levels...'),
       importingWallet: this.translate.instant('Importing Wallet...'),
@@ -68,7 +71,8 @@ export class OnGoingProcessProvider {
       creatingGiftCard: this.translate.instant('Creating Gift Card...'),
       buyingGiftCard: this.translate.instant('Buying Gift Card...'),
       topup: this.translate.instant('Top up in progress...'),
-      duplicatingWallet: this.translate.instant('Duplicating wallet...')
+      duplicatingWallet: this.translate.instant('Duplicating wallet...'),
+      connectingBitPayId: this.translate.instant('Connecting BitPay ID...')
     };
     return processNames;
   }

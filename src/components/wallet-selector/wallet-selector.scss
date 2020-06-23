@@ -1,9 +1,7 @@
 wallet-selector {
+  padding-bottom: calc(env(safe-area-inset-bottom));
   .error {
     color: color($colors, danger);
-  }
-  .wallet-button {
-    background: none;
   }
   .title {
     font-weight: 500;
@@ -17,20 +15,18 @@ wallet-selector {
     padding: 20px;
     color: color($colors, danger);
   }
-  .destination-title {
-    width: 100%;
-    text-align: center;
-    font-weight: 500;
-    margin: 20px 0;
-    text-transform: uppercase;
+  .bp-header {
+    margin: 32px 0 20px 3px;
   }
-  .back-button {
-    background-color: $background-color;
-    display: inline-block;
-    width: 100%;
-    ion-icon {
-      padding: 1.5rem 20px 1.5rem 20px;
-      cursor: pointer;
+  .key-divider {
+    display: flex;
+    align-items: center;
+    padding: 20px 0;
+    margin: 0 25px;
+    color: color($colors, grey);
+    border-bottom: 1px solid rgba(155, 163, 174, 0.2);
+    span {
+      margin-left: 10px;
     }
   }
 }

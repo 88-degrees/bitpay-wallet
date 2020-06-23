@@ -1,10 +1,6 @@
 page-addressbook {
   .zero-state {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    margin-top: 30%;
     text-align: center;
     &-icon {
       display: inline-block;
@@ -25,37 +21,17 @@ page-addressbook {
     }
     &-description {
       font-size: 0.9em;
-      margin-top: 0;
-      margin-left: 2rem;
-      margin-right: 2rem;
-      margin-bottom: 120px;
+      margin-bottom: 90px;
       opacity: 0.6;
-      max-width: 300px;
     }
   }
-
-  .addressbook ion-item.item-wrapper {
-    button {
-      align-items: start;
+  .add-button {
+    font-size: 16px;
+    background: none;
+    color: black;
+    ion-icon {
+      vertical-align: text-bottom;
+      margin-left: 3px;
     }
-  }
-
-  .addressbook ion-item.reorder-active {
-    box-shadow: none;
-
-    button {
-      box-shadow: 0 5px 18px 0 rgba(0, 0, 0, 0.06);
-      transform: scale3d(1.05, 1.05, 1.05);
-      transition: box-shadow 300ms ease, transform 300ms ease;
-    }
-  }
-
-  .sortContainer {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    flex-direction: row;
-    margin-right: 10px;
-    margin-bottom: 5px;
   }
 }

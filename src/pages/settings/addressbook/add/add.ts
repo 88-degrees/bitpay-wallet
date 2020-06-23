@@ -28,6 +28,7 @@ export class AddressbookAddPage {
 
   public isCordova: boolean;
   public appName: string;
+  private regex: RegExp;
 
   constructor(
     private navCtrl: NavController,
@@ -40,6 +41,7 @@ export class AddressbookAddPage {
     private logger: Logger,
     private popupProvider: PopupProvider
   ) {
+    this.regex = /^[0-9]{9,}$/;
     this.addressBookAdd = this.formBuilder.group({
       name: [
         '',
@@ -52,7 +54,8 @@ export class AddressbookAddPage {
           Validators.required,
           new AddressValidator(this.addressProvider).isValid
         ])
-      ]
+      ],
+      tag: ['', Validators.pattern(this.regex)]
     });
     if (this.navParams.data.addressbookEntry) {
       this.addressBookAdd.controls['address'].setValue(
@@ -72,9 +75,18 @@ export class AddressbookAddPage {
   }
 
   private updateAddressHandler: any = data => {
-    this.addressBookAdd.controls['address'].setValue(
-      this.parseAddress(data.value)
-    );
+    if (
+      this.regex.test(data.value) &&
+      this.addressBookAdd.value.address &&
+      this.getCoinAndNetwork() &&
+      this.getCoinAndNetwork().coin === 'xrp'
+    ) {
+      this.addressBookAdd.controls['tag'].setValue(data.value);
+    } else {
+      this.addressBookAdd.controls['address'].setValue(
+        this.parseAddress(data.value)
+      );
+    }
   };
 
   private emailOrEmpty(control: AbstractControl): ValidationErrors | null {
@@ -82,28 +94,9 @@ export class AddressbookAddPage {
   }
 
   public save(): void {
-    let newAddress: string = this.parseAddress(
-      this.addressBookAdd.value.address
+    this.addressBookAdd.controls['address'].setValue(
+      this.parseAddress(this.addressBookAdd.value.address)
     );
-
-    this.addressBookAdd.controls['address'].setValue(newAddress);
-    let newAddressOrder: number;
-
-    this.ab
-      .list()
-      .then(addressBook => {
-        newAddressOrder = Object.keys(addressBook).length;
-        this.ab
-          .setAddressOrder(newAddress, newAddressOrder)
-          .then(() => {})
-          .catch(err => {
-            this.logger.debug('Error setting new address order', err);
-          });
-      })
-      .catch(err => {
-        this.logger.debug('Error retrieving address book length', err);
-      });
-
     this.ab
       .add(this.addressBookAdd.value)
       .then(() => {
@@ -120,5 +113,11 @@ export class AddressbookAddPage {
 
   public openScanner(): void {
     this.navCtrl.push(ScanPage, { fromAddressbook: true });
+  }
+
+  public getCoinAndNetwork(): { coin: string; network: string } {
+    return this.addressProvider.getCoinAndNetwork(
+      this.addressBookAdd.value.address
+    );
   }
 }

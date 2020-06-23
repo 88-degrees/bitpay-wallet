@@ -12,6 +12,7 @@ import { ConfigProvider } from '../config/config';
 import { PlatformProvider } from '../platform/platform';
 import { ProfileProvider } from '../profile/profile';
 
+import BWC from 'bitcore-wallet-client';
 import * as _ from 'lodash';
 
 @Injectable()
@@ -41,7 +42,8 @@ export class PushNotificationsProvider {
   public init(): void {
     if (!this.usePushNotifications || this._token) return;
     this.configProvider.load().then(() => {
-      if (!this.configProvider.get().pushNotificationsEnabled) return;
+      const config = this.configProvider.get();
+      if (!config.pushNotifications.enabled) return;
 
       this.logger.debug('Starting push notification registration...');
 
@@ -56,7 +58,12 @@ export class PushNotificationsProvider {
         this.logger.debug('Get token for push notifications: ' + token);
         this._token = token;
         this.enable();
+        // enabling topics
         this.handlePushNotifications();
+        if (config.offersAndPromotions.enabled)
+          this.subscribeToTopic('offersandpromotions');
+        if (config.productsUpdates.enabled)
+          this.subscribeToTopic('productsupdates');
       });
     });
   }
@@ -70,9 +77,21 @@ export class PushNotificationsProvider {
         );
         if (data.wasTapped) {
           // Notification was received on device tray and tapped by the user.
-          const walletIdHashed = data.walletId;
-          if (!walletIdHashed) return;
-          this._openWallet(walletIdHashed);
+          if (data.redir) {
+            this.events.publish('IncomingDataRedir', { name: data.redir });
+          } else if (
+            data.takeover_url &&
+            data.takeover_image &&
+            data.takeover_sig
+          ) {
+            if (!this.verifySignature(data)) return;
+            this.events.publish('ShowAdvertising', data);
+          } else {
+            const walletIdHashed = data.walletId;
+            const tokenAddress = data.tokenAddress;
+            if (!walletIdHashed) return;
+            this._openWallet(walletIdHashed, tokenAddress);
+          }
         }
       });
     }
@@ -85,7 +104,10 @@ export class PushNotificationsProvider {
       );
       return;
     }
-    this._subscribe(walletClient);
+    if (!_.isArray(walletClient)) walletClient = [walletClient];
+    walletClient.forEach(w => {
+      this._subscribe(w);
+    });
   }
 
   public enable(): void {
@@ -96,7 +118,10 @@ export class PushNotificationsProvider {
       return;
     }
 
-    const wallets = this.profileProvider.getWallets();
+    const opts = {
+      showHidden: true
+    };
+    const wallets = this.profileProvider.getWallets(opts);
     _.forEach(wallets, walletClient => {
       this._subscribe(walletClient);
     });
@@ -110,7 +135,14 @@ export class PushNotificationsProvider {
       return;
     }
 
-    const wallets = this.profileProvider.getWallets();
+    // disabling topics
+    this.unsubscribeFromTopic('offersandpromotions');
+    this.unsubscribeFromTopic('productsupdates');
+
+    const opts = {
+      showHidden: true
+    };
+    const wallets = this.profileProvider.getWallets(opts);
     _.forEach(wallets, walletClient => {
       this._unsubscribe(walletClient);
     });
@@ -120,6 +152,14 @@ export class PushNotificationsProvider {
   public unsubscribe(walletClient): void {
     if (!this._token) return;
     this._unsubscribe(walletClient);
+  }
+
+  public subscribeToTopic(topic: string): void {
+    this.FCMPlugin.subscribeToTopic(topic);
+  }
+
+  public unsubscribeFromTopic(topic: string): void {
+    this.FCMPlugin.unsubscribeFromTopic(topic);
   }
 
   private _subscribe(walletClient): void {
@@ -155,8 +195,8 @@ export class PushNotificationsProvider {
     });
   }
 
-  private async _openWallet(walletIdHashed) {
-    const wallet = this.findWallet(walletIdHashed);
+  private async _openWallet(walletIdHashed, tokenAddress) {
+    const wallet = this.findWallet(walletIdHashed, tokenAddress);
 
     if (!wallet) return;
 
@@ -165,16 +205,56 @@ export class PushNotificationsProvider {
     this.events.publish('OpenWallet', wallet);
   }
 
-  private findWallet(walletIdHashed) {
+  private findWallet(walletIdHashed, tokenAddress) {
     let walletIdHash;
     const sjcl = this.bwcProvider.getSJCL();
 
     const wallets = this.profileProvider.getWallets();
     const wallet = _.find(wallets, w => {
-      walletIdHash = sjcl.hash.sha256.hash(w.credentials.walletId);
+      if (tokenAddress) {
+        const walletId = w.credentials.walletId;
+        const lastHyphenPosition = walletId.lastIndexOf('-');
+        const walletIdWithoutTokenAddress = walletId.substring(
+          0,
+          lastHyphenPosition
+        );
+        walletIdHash = sjcl.hash.sha256.hash(walletIdWithoutTokenAddress);
+      } else {
+        walletIdHash = sjcl.hash.sha256.hash(w.credentials.walletId);
+      }
       return _.isEqual(walletIdHashed, sjcl.codec.hex.fromBits(walletIdHash));
     });
 
     return wallet;
+  }
+
+  public clearAllNotifications(): void {
+    if (!this._token) return;
+    this.FCMPlugin.clearAllNotifications();
+  }
+
+  private verifySignature(data): boolean {
+    const pubKey = this.appProvider.info.marketingPublicKey;
+    if (!pubKey) return false;
+
+    const b = BWC.Bitcore;
+    const ECDSA = b.crypto.ECDSA;
+    const Hash = b.crypto.Hash;
+    const SEP = '::';
+    const _takeover_url = data.takeover_url;
+    const _takeover_image = data.takeover_image;
+    const _takeover_sig = data.takeover_sig;
+
+    const sigObj = b.crypto.Signature.fromString(_takeover_sig);
+    const _hashbuf = Hash.sha256(
+      Buffer.from(_takeover_url + SEP + _takeover_image)
+    );
+    const verificationResult = ECDSA.verify(
+      _hashbuf,
+      sigObj,
+      new b.PublicKey(pubKey),
+      'little'
+    );
+    return verificationResult;
   }
 }

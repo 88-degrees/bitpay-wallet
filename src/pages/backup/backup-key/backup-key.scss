@@ -3,7 +3,7 @@ page-backup-key {
     background: white;
   }
   .key-container {
-    height: 85%;
+    height: 65vh;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -51,8 +51,8 @@ page-backup-key {
   .bottom-absolute {
     display: flex;
     justify-content: space-between;
-    padding: 0px;
-    bottom: 2rem;
+    padding: 0;
+    margin-bottom: 20px;
     .button-left,
     .button-right {
       font-size: 1.8rem;

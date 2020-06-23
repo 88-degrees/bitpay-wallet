@@ -1,5 +1,5 @@
 import { Component } from '@angular/core';
-import { NavController, NavParams } from 'ionic-angular';
+import { NavParams } from 'ionic-angular';
 import { Logger } from '../../../providers/logger/logger';
 
 // Native
@@ -7,6 +7,8 @@ import { SocialSharing } from '@ionic-native/social-sharing';
 
 // providers
 import { ActionSheetProvider } from '../../../providers/action-sheet/action-sheet';
+import { ConfigProvider } from '../../../providers/config/config';
+import { Coin, CurrencyProvider } from '../../../providers/currency/currency';
 import { PlatformProvider } from '../../../providers/platform/platform';
 import { ProfileProvider } from '../../../providers/profile/profile';
 import { TxFormatProvider } from '../../../providers/tx-format/tx-format';
@@ -25,8 +27,10 @@ export class CustomAmountPage {
   public amountUnitStr: string;
   public amountCoin: string;
   public altAmountStr: string;
+  public useLegacyQrCode: boolean;
 
   constructor(
+    public currencyProvider: CurrencyProvider,
     private navParams: NavParams,
     private profileProvider: ProfileProvider,
     private platformProvider: PlatformProvider,
@@ -35,10 +39,11 @@ export class CustomAmountPage {
     private socialSharing: SocialSharing,
     private txFormatProvider: TxFormatProvider,
     private actionSheetProvider: ActionSheetProvider,
-    private navCtrl: NavController
+    private configProvider: ConfigProvider
   ) {
     const walletId = this.navParams.data.id;
     this.showShareButton = this.platformProvider.isCordova;
+    this.useLegacyQrCode = this.configProvider.get().legacyQrCode.show;
 
     this.wallet = this.profileProvider.getWallet(walletId);
 
@@ -60,10 +65,11 @@ export class CustomAmountPage {
       const _currency = parsedAmount.currency;
       this.amountUnitStr = parsedAmount.amountUnitStr;
 
-      if (_currency != 'BTC' && _currency != 'BCH') {
+      if (!Coin[_currency]) {
         // Convert to BTC or BCH
         const amountUnit = this.txFormatProvider.satToUnit(
-          parsedAmount.amountSat
+          parsedAmount.amountSat,
+          this.wallet.coin
         );
         var btcParsedAmount = this.txFormatProvider.parseAmount(
           this.wallet.coin,
@@ -90,8 +96,18 @@ export class CustomAmountPage {
         );
       }
 
-      this.qrAddress =
-        (protoAddr ? protoAddr : this.address) + '?amount=' + this.amountCoin;
+      if (
+        this.currencyProvider.isUtxoCoin(this.wallet.coin) ||
+        this.wallet.coin === 'xrp'
+      ) {
+        this.qrAddress =
+          (protoAddr ? protoAddr : this.address) + '?amount=' + this.amountCoin;
+      } else {
+        this.qrAddress =
+          (protoAddr ? protoAddr : this.address) +
+          '?value=' +
+          parsedAmount.amountSat;
+      }
     });
   }
 
@@ -103,16 +119,6 @@ export class CustomAmountPage {
     this.socialSharing.share(this.qrAddress);
   }
 
-  public showFullInfo(): void {
-    const infoSheet = this.actionSheetProvider.createInfoSheet(
-      'custom-amount',
-      {
-        qrAddress: this.qrAddress
-      }
-    );
-    infoSheet.present();
-  }
-
   public showPaymentRequestInfo(): void {
     const infoSheet = this.actionSheetProvider.createInfoSheet(
       'payment-request',
@@ -122,9 +128,5 @@ export class CustomAmountPage {
       }
     );
     infoSheet.present();
-  }
-
-  public close(): void {
-    this.navCtrl.popToRoot();
   }
 }

@@ -1,5 +1,4 @@
 import { Component } from '@angular/core';
-import { StatusBar } from '@ionic-native/status-bar';
 import { TranslateService } from '@ngx-translate/core';
 import {
   Events,
@@ -12,6 +11,7 @@ import { Logger } from '../../../providers/logger/logger';
 
 // Pages
 import { ShapeshiftDetailsPage } from './shapeshift-details/shapeshift-details';
+import { ShapeshiftSettingsPage } from './shapeshift-settings/shapeshift-settings';
 import { ShapeshiftShiftPage } from './shapeshift-shift/shapeshift-shift';
 
 // Providers
@@ -21,6 +21,7 @@ import { OnGoingProcessProvider } from '../../../providers/on-going-process/on-g
 import { PlatformProvider } from '../../../providers/platform/platform';
 import { PopupProvider } from '../../../providers/popup/popup';
 import { ShapeshiftProvider } from '../../../providers/shapeshift/shapeshift';
+import { ThemeProvider } from '../../../providers/theme/theme';
 import { TimeProvider } from '../../../providers/time/time';
 
 @Component({
@@ -29,7 +30,6 @@ import { TimeProvider } from '../../../providers/time/time';
 })
 export class ShapeshiftPage {
   public shifts;
-  public network: string;
   public oauthCodeForm: FormGroup;
   public showOauthForm: boolean;
   public accessToken: string;
@@ -52,7 +52,7 @@ export class ShapeshiftPage {
     protected translate: TranslateService,
     private popupProvider: PopupProvider,
     private platformProvider: PlatformProvider,
-    private statusBar: StatusBar
+    private themeProvider: ThemeProvider
   ) {
     this.oauthCodeForm = this.formBuilder.group({
       code: [
@@ -61,8 +61,7 @@ export class ShapeshiftPage {
       ]
     });
     this.showOauthForm = false;
-    this.network = this.shapeshiftProvider.getNetwork();
-    this.shifts = { data: {} };
+    this.shifts = { data: null };
     this.headerColor = '#0d172c';
   }
 
@@ -72,7 +71,7 @@ export class ShapeshiftPage {
 
   ionViewWillEnter() {
     if (this.platformProvider.isCordova) {
-      this.statusBar.styleBlackOpaque();
+      this.themeProvider.useCustomStatusBar(this.headerColor);
     }
     if (this.navParams.data.code) {
       this.shapeshiftProvider.getStoredToken((at: string) => {
@@ -87,7 +86,7 @@ export class ShapeshiftPage {
 
   ionViewWillLeave() {
     if (this.platformProvider.isCordova) {
-      this.statusBar.styleDefault();
+      this.themeProvider.useDefaultStatusBar();
     }
     this.events.unsubscribe('bwsEvent', this.bwsEventHandler);
   }
@@ -97,16 +96,14 @@ export class ShapeshiftPage {
   };
 
   private init(): void {
-    this.loading = true;
     this.shapeshiftProvider.getStoredToken((at: string) => {
+      if (!at) return;
       this.accessToken = at;
       // Update Access Token if necessary
       this.shapeshiftProvider.init((err, data) => {
         if (err || _.isEmpty(data)) {
-          this.loading = false;
           if (err) {
             this.logger.error(err);
-            this.loading = false;
             if (err == 'unverified_account') {
               this.openShafeShiftWindow();
             } else {
@@ -123,13 +120,11 @@ export class ShapeshiftPage {
           }
           return;
         }
+      });
 
-        this.shapeshiftProvider.getShapeshift((err, ss) => {
-          this.loading = false;
-          if (err) this.logger.error(err);
-          if (ss) this.shifts = { data: ss };
-          this.updateShift(this.shifts);
-        });
+      this.shapeshiftProvider.getShapeshift((err, ss) => {
+        if (ss) this.shifts = { data: ss };
+        if (!err) this.updateShift(this.shifts);
       });
     });
   }
@@ -138,36 +133,53 @@ export class ShapeshiftPage {
     this.externalLinkProvider.open(url);
   }
 
+  private getInfo(data, at, cb) {
+    if (data && data.orderId)
+      return this.shapeshiftProvider.getOrderInfo(data.orderId, at, cb);
+    return this.shapeshiftProvider.getStatus(data.address, at, cb);
+  }
+
   private updateShift = _.debounce(
     shifts => {
       if (_.isEmpty(shifts.data)) return;
       _.forEach(shifts.data, dataFromStorage => {
         if (!this.checkIfShiftNeedsUpdate(dataFromStorage)) return;
 
-        this.shapeshiftProvider.getStatus(
-          dataFromStorage.address,
-          this.accessToken,
-          (err, st) => {
-            if (err) return;
+        this.loading = true;
+        this.getInfo(dataFromStorage, this.accessToken, (err, st) => {
+          this.loading = false;
+          if (err) return;
 
-            this.shifts.data[st.address].status = st.status;
-            this.shifts.data[st.address].transaction = st.transaction || null;
-            this.shifts.data[st.address].incomingCoin = st.incomingCoin || null;
-            this.shifts.data[st.address].incomingType = st.incomingType || null;
-            this.shifts.data[st.address].outgoingCoin = st.outgoingCoin || null;
-            this.shifts.data[st.address].outgoingType = st.outgoingType || null;
-            this.shapeshiftProvider.saveShapeshift(
-              this.shifts.data[st.address],
-              null,
-              () => {
-                this.logger.debug('Saved shift with status: ' + st.status);
-              }
-            );
-          }
-        );
+          this.shifts.data[dataFromStorage.address] = _.assign(
+            this.shifts.data[dataFromStorage.address],
+            {
+              status: st.status || dataFromStorage.status || null,
+              error: st.error || dataFromStorage.error || null,
+              transaction:
+                st.transaction || dataFromStorage.transaction || null,
+              incomingCoin:
+                st.incomingCoin || dataFromStorage.incomingCoin || null,
+              incomingType:
+                st.incomingType || dataFromStorage.incomingType || null,
+              outgoingCoin:
+                st.outgoingCoin || dataFromStorage.outgoingCoin || null,
+              outgoingType:
+                st.outgoingType || dataFromStorage.outgoingType || null
+            }
+          );
+          this.shapeshiftProvider.saveShapeshift(
+            this.shifts.data[dataFromStorage.address],
+            null,
+            () => {
+              this.logger.debug(
+                'Saved shift with status: ' + (st.status || st.error)
+              );
+            }
+          );
+        });
       });
     },
-    1000,
+    3000,
     {
       leading: true
     }
@@ -180,7 +192,10 @@ export class ShapeshiftPage {
     }
     // Check if shiftData status FAILURE for 24 hours
     if (
-      (shiftData.status == 'failed' || shiftData.status == 'no_deposits') &&
+      (shiftData.status == 'failed' ||
+        shiftData.status == 'no_deposits' ||
+        shiftData.status == 'expired' ||
+        !shiftData.status) &&
       this.timeProvider.withinPastDay(shiftData.date)
     ) {
       return true;
@@ -208,6 +223,9 @@ export class ShapeshiftPage {
     switch (page) {
       case 'Shift':
         this.navCtrl.push(ShapeshiftShiftPage);
+        break;
+      case 'Settings':
+        this.navCtrl.push(ShapeshiftSettingsPage);
         break;
     }
   }
@@ -261,7 +279,7 @@ export class ShapeshiftPage {
         this.logger.error('Error connecting to ShapeShift: ' + err);
         return;
       }
-      this.navCtrl.pop();
+      if (this.platformProvider.isCordova) this.navCtrl.pop();
       this.accessToken = accessToken;
       this.init();
     });

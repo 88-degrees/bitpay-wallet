@@ -1,5 +1,4 @@
 import { Component } from '@angular/core';
-import { StatusBar } from '@ionic-native/status-bar';
 import { TranslateService } from '@ngx-translate/core';
 import { ActionSheetController, NavController, NavParams } from 'ionic-angular';
 
@@ -9,10 +8,14 @@ import * as _ from 'lodash';
 import { BitPayAccountProvider } from '../../../../providers/bitpay-account/bitpay-account';
 import { BitPayCardProvider } from '../../../../providers/bitpay-card/bitpay-card';
 import { ExternalLinkProvider } from '../../../../providers/external-link/external-link';
-import { PlatformProvider } from '../../../../providers/platform/platform';
 import { PopupProvider } from '../../../../providers/popup/popup';
 
 // pages
+import {
+  IABCardProvider,
+  PersistenceProvider,
+  ProfileProvider
+} from '../../../../providers';
 import { BitPayCardPage } from '../bitpay-card';
 
 @Component({
@@ -21,7 +24,7 @@ import { BitPayCardPage } from '../bitpay-card';
 })
 export class BitPayCardIntroPage {
   public accounts;
-
+  public cardExperimentEnabled: boolean;
   constructor(
     private translate: TranslateService,
     private actionSheetCtrl: ActionSheetController,
@@ -31,14 +34,16 @@ export class BitPayCardIntroPage {
     private bitPayCardProvider: BitPayCardProvider,
     private navCtrl: NavController,
     private externalLinkProvider: ExternalLinkProvider,
-    private statusBar: StatusBar,
-    private platformProvider: PlatformProvider
-  ) {}
+    private persistenceProvider: PersistenceProvider,
+    private iabCardProvider: IABCardProvider,
+    private profileProvider: ProfileProvider
+  ) {
+    this.persistenceProvider.getCardExperimentFlag().then(status => {
+      this.cardExperimentEnabled = status === 'enabled';
+    });
+  }
 
   ionViewWillEnter() {
-    if (this.platformProvider.isIOS) {
-      this.statusBar.styleLightContent();
-    }
     if (this.navParams.data.secret) {
       let pairData = {
         secret: this.navParams.data.secret,
@@ -99,10 +104,13 @@ export class BitPayCardIntroPage {
     });
   }
 
-  ionViewWillLeave() {
-    if (this.platformProvider.isIOS) {
-      this.statusBar.styleLightContent();
-    }
+  ionViewDidEnter() {
+    this.bitPayCardProvider.logEvent('legacycard_view_setup', {});
+  }
+
+  public openExchangeRates() {
+    let url = 'https://bitpay.com/exchange-rates';
+    this.externalLinkProvider.open(url);
   }
 
   public bitPayCardInfo() {
@@ -110,12 +118,39 @@ export class BitPayCardIntroPage {
     this.externalLinkProvider.open(url);
   }
 
-  public orderBitPayCard() {
-    let url = 'https://bitpay.com/visa/get-started';
-    this.externalLinkProvider.open(url);
+  public async orderBitPayCard() {
+    const hasWalletWithFunds = this.profileProvider.hasWalletWithFunds(
+      12,
+      'USD'
+    );
+
+    const hasFirstView = await this.iabCardProvider.hasFirstView();
+
+    if (!hasWalletWithFunds && !hasFirstView) {
+      this.iabCardProvider.show();
+      this.iabCardProvider.sendMessage(
+        {
+          message: 'needFunds'
+        },
+        () => {}
+      );
+      return;
+    }
+
+    this.iabCardProvider.show();
+    this.iabCardProvider.sendMessage(
+      {
+        message: 'orderCard'
+      },
+      () => {}
+    );
+    setTimeout(() => {
+      this.navCtrl.pop();
+    }, 300);
   }
 
   public connectBitPayCard() {
+    this.bitPayCardProvider.logEvent('legacycard_connect', {});
     if (this.accounts.length == 0) {
       this.startPairBitPayAccount();
     } else {

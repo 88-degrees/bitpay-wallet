@@ -1,12 +1,14 @@
-import { async, ComponentFixture } from '@angular/core/testing';
+import { async, ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { ErrorsProvider } from '../../../providers/errors/errors';
 import { TestUtils } from '../../../test';
-
 import { ConfirmPage } from './confirm';
 
 describe('ConfirmPage', () => {
   let fixture: ComponentFixture<ConfirmPage>;
   let instance;
+  let errorsProvider: ErrorsProvider;
+  let testBed: typeof TestBed;
 
   beforeEach(async(() =>
     TestUtils.configurePageTestingModule([ConfirmPage]).then(testEnv => {
@@ -14,11 +16,17 @@ describe('ConfirmPage', () => {
       instance = testEnv.instance;
       instance.navParams = {
         data: {
-          toAddress: 'n4VQ5YdHf7hLQ2gWQYYrcxoE5B7nWuDFNF'
+          toAddress: 'n4VQ5YdHf7hLQ2gWQYYrcxoE5B7nWuDFNF',
+          coin: 'btc'
         }
       };
-      instance.tx = { coin: 'BTC' };
+      instance.coin = 'btc';
+      instance.tx = { coin: 'btc' };
       spyOn(instance.onGoingProcessProvider, 'set');
+      testBed = testEnv.testBed;
+      errorsProvider = testBed.get(ErrorsProvider);
+      spyOn(errorsProvider, 'showDefaultError');
+      spyOn(errorsProvider, 'showWrongEncryptPasswordError');
       fixture.detectChanges();
     })));
   afterEach(() => {
@@ -26,28 +34,36 @@ describe('ConfirmPage', () => {
   });
 
   describe('Lifecycle Hooks', () => {
-    describe('ionViewWillEnter', () => {
+    describe('ionViewDidLoad', () => {
       it('should set swipeBackEnabled to false', () => {
-        instance.ionViewWillEnter();
+        instance.ionViewDidLoad();
         expect(instance.navCtrl.swipeBackEnabled).toBe(false);
       });
       it('should display an error message if attempting to send to an old bch address', () => {
         instance.navParams.data.toAddress =
           'CUksFGi4uVxpmV8S3JjYMSKJugT8JBvQdu1';
+        instance.navParams.data.coin = 'bch';
         const popupSpy = spyOn(
           instance.popupProvider,
           'ionicConfirm'
         ).and.returnValue(Promise.resolve());
-        instance.ionViewWillEnter();
+        instance.ionViewDidLoad();
         expect(popupSpy).toHaveBeenCalled();
       });
-      it('should show instantiate the wallet selector with relevant wallets', () => {
+      it('should instantiate the wallet selector with relevant wallets', () => {
         const setWalletSelectorSpy = spyOn(
           instance,
           'setWalletSelector'
         ).and.returnValue(Promise.resolve());
+        spyOn(
+          instance.actionSheetProvider,
+          'createWalletSelector'
+        ).and.returnValue({
+          present() {},
+          onDidDismiss() {}
+        });
         instance.wallets = [{}, {}];
-        instance.ionViewWillEnter();
+        instance.ionViewDidLoad();
         expect(setWalletSelectorSpy).toHaveBeenCalled();
       });
     });
@@ -66,40 +82,27 @@ describe('ConfirmPage', () => {
   describe('Methods', () => {
     describe('chooseFeeLevel', () => {
       it('should display a fee modal', () => {
-        const modal = {
-          present: () => {},
-          onDidDismiss: () => {}
-        };
-        const presentSpy = spyOn(modal, 'present');
-        instance.modalCtrl.create = () => modal;
+        const appSheet = spyOn(
+          instance.actionSheetProvider,
+          'createChooseFeeLevel'
+        ).and.returnValue({
+          present() {},
+          onDidDismiss() {}
+        });
         instance.chooseFeeLevel();
-        expect(presentSpy).toHaveBeenCalled();
+        expect(appSheet).toHaveBeenCalled();
       });
     });
     describe('onFeeModalDismiss', () => {
       it('should set usingCustomFee to true if newFeeLevel is custom', () => {
+        spyOn(instance, 'updateTx').and.returnValue(Promise.resolve());
         instance.onFeeModalDismiss({ newFeeLevel: 'custom' });
         expect(instance.usingCustomFee).toBe(true);
       });
     });
-    describe('setWallet', () => {
-      it('should not break', () => {
-        instance.tx = { paypro: { expires: 1000 } };
-        const wallet = {
-          coin: 'BTC',
-          credentials: {
-            m: 1
-          },
-          isPrivKeyEncrypted: () => {
-            return false;
-          }
-        };
-        instance.setWallet(wallet);
-      });
-    });
     describe('confirmTx', () => {
       it('should display a confirm popup', () => {
-        const txp = { coin: 'BTC' };
+        const txp = { coin: 'btc' };
         const wallet = {};
         spyOn(instance.txFormatProvider, 'formatToUSD').and.returnValue(
           Promise.resolve('100.50')
@@ -109,7 +112,7 @@ describe('ConfirmPage', () => {
     });
     describe('approve', () => {
       const tx = {};
-      const txp = { coin: 'BTC' };
+      const txp = { coin: 'btc' };
       const wallet = {};
       it('should clear the ongoing process loader if user declines', async () => {
         spyOn(instance, 'getTxp').and.returnValue(Promise.resolve(txp));

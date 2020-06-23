@@ -9,13 +9,11 @@ export interface StatusMock {
     lockedConfirmedAmount: number;
     availableAmount: number;
     availableConfirmedAmount: number;
-    byAddress: [
-      {
-        address: string;
-        path: string;
-        amount: number;
-      }
-    ];
+    byAddress: Array<{
+      address: string;
+      path: string;
+      amount: number;
+    }>;
   };
   isValid: boolean;
   pendingTxps: PendingTxpMock[];
@@ -125,6 +123,7 @@ export class WalletMock {
     walletName: string;
     network?: string;
     publicKeyRing?: any[];
+    coin: string;
   };
   coin: string;
   id: string;
@@ -146,7 +145,8 @@ export class WalletMock {
       scanStatus: null,
       walletId: 'walletid1',
       walletName: 'Test wallet',
-      keyId: 'keyId1'
+      keyId: 'keyId1',
+      coin: 'btc'
     };
     this.coin = 'btc';
     this.id = 'walletid1';
@@ -212,13 +212,16 @@ export class WalletMock {
   }
   createTxProposal(_txp, cb) {
     const txp: TransactionProposal = {
+      coin: 'btc',
       amount: 1000,
+      from: 'address1',
       toAddress: 'address1',
       outputs: [
         {
           toAddress: 'address1',
           amount: 1000,
-          message: 'msg1'
+          message: 'msg1',
+          data: 'data'
         }
       ],
       inputs: null,
@@ -239,6 +242,10 @@ export class WalletMock {
   pushSignatures(_txp, _signatures, cb) {
     const signedTxp = _txp;
     return cb(null, signedTxp);
+  }
+  broadcastRawTx(_txp, cb) {
+    const broadcastedTxp = _txp;
+    return cb(null, broadcastedTxp);
   }
   broadcastTxProposal(_txp, cb) {
     const broadcastedTxp = _txp;

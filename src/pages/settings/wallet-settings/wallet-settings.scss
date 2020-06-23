@@ -14,42 +14,19 @@ page-wallet-settings {
   ion-item-divider.item.item-divider {
     padding-left: 16px;
   }
+  .bp-list {
+    ion-item-divider {
+      margin-top: 0px;
+      padding: 12.5px 0px 12.5px 20px;
+      background: #f8f8f9;
+      .reorder-option {
+        font-size: 1.4rem;
+        margin: 0 8px 0 !important;
+      }
+    }
+  }
 
   .item-without-title {
     margin-top: 0;
-  }
-
-  .settings-list {
-    .item {
-      border: 0;
-    }
-
-    ion-item.item,
-    button.item {
-      padding: 12px 0 12px 22px;
-      border-bottom: 0;
-
-      .item-inner {
-        margin-left: 8px;
-
-        ion-note.note {
-          background: #f4f5fb;
-          color: #565d6d;
-          font-weight: 300;
-          padding: 6px 10px;
-          border-radius: 4px;
-        }
-        ion-note.note.wallet-warning {
-          background: none;
-          color: #e56c7b;
-        }
-      }
-
-      &:last-child {
-        &:after {
-          width: 100%;
-        }
-      }
-    }
   }
 }

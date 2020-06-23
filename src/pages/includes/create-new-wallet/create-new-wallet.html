@@ -1,11 +1,16 @@
-<action-card>
+<action-card-v4 (click)="goToAddWalletPage()" tappable>
   <div action-card-header>
-    <img src="assets/img/add-wallet/wallet.svg" />
+    <div class="zero-state-wallets">
+      <div class="zero-state-image">
+        <img src="assets/img/zero-state-wallets.svg">
+      </div>
+    </div>
   </div>
-  <div action-card-title translate>Add Wallet</div>
+  <div action-card-title translate>Create new wallet</div>
   <div action-card-body translate>
-    Now it's time for you to create a wallet to store your funds into. </div>
-  <div action-card-button translate (click)="goToAddWalletPage()" tappable>
+    Take control of your crypto
+  </div>
+  <div action-card-button translate>
     Get Started
   </div>
-</action-card>
+</action-card-v4>

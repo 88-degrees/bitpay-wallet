@@ -117,9 +117,8 @@ export class ShapeshiftProvider {
   }
 
   public saveShapeshift(data, opts, cb): void {
-    const network = this.getNetwork();
     this.persistenceProvider
-      .getShapeshift(network)
+      .getShapeshift(this.credentials.NETWORK)
       .then(oldData => {
         if (_.isString(oldData)) {
           oldData = JSON.parse(oldData);
@@ -138,7 +137,7 @@ export class ShapeshiftProvider {
 
         inv = JSON.stringify(inv);
 
-        this.persistenceProvider.setShapeshift(network, inv);
+        this.persistenceProvider.setShapeshift(this.credentials.NETWORK, inv);
         return cb(null);
       })
       .catch(err => {
@@ -147,9 +146,8 @@ export class ShapeshiftProvider {
   }
 
   public getShapeshift(cb) {
-    const network = this.getNetwork();
     this.persistenceProvider
-      .getShapeshift(network)
+      .getShapeshift(this.credentials.NETWORK)
       .then(ss => {
         return cb(null, ss);
       })
@@ -167,7 +165,7 @@ export class ShapeshiftProvider {
       data => {
         const error = this.parseError(data);
         this.logger.error('Shapeshift PAIR ERROR: ' + error);
-        return cb(data);
+        return cb(error);
       }
     );
   }
@@ -181,7 +179,7 @@ export class ShapeshiftProvider {
       data => {
         const error = this.parseError(data);
         this.logger.error('Shapeshift LIMIT ERROR: ' + error);
-        return cb(data);
+        return cb(error);
       }
     );
   }
@@ -197,7 +195,28 @@ export class ShapeshiftProvider {
         data => {
           const error = this.parseError(data);
           this.logger.error('Shapeshift MARKET INFO ERROR: ', error);
-          return cb(data);
+          return cb(error);
+        }
+      );
+  }
+
+  public getOrderInfo(orderId: string, token: string, cb) {
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: 'Bearer ' + token
+    };
+    this.httpNative
+      .get(this.credentials.API_URL + '/orderInfo/' + orderId, null, headers)
+      .subscribe(
+        data => {
+          this.logger.info('Shapeshift ORDER INFO: SUCCESS');
+          return cb(null, data);
+        },
+        data => {
+          const error = this.parseError(data);
+          this.logger.error('Shapeshift ORDER INFO ERROR: ' + error);
+          return cb(error);
         }
       );
   }
@@ -218,7 +237,7 @@ export class ShapeshiftProvider {
         data => {
           const error = this.parseError(data);
           this.logger.error('Shapeshift STATUS ERROR: ' + error);
-          return cb(data.error);
+          return cb(error);
         }
       );
   }
@@ -244,7 +263,8 @@ export class ShapeshiftProvider {
           'linear-gradient(to bottom,rgba(13,23,44,1) 0,rgba(16,29,58,1) 100%)',
         page: 'ShapeshiftPage',
         show: !!this.configProvider.get().showIntegration['shapeshift'],
-        linked: isActive
+        linked: isActive,
+        type: 'exchange'
       });
     });
   }
@@ -339,7 +359,8 @@ export class ShapeshiftProvider {
           return cb('unverified_account');
         } else {
           return cb(null, {
-            accessToken
+            accessToken,
+            user: data.user
           });
         }
       });
@@ -394,7 +415,7 @@ export class ShapeshiftProvider {
         this.logger.error(
           'ShapeShift: Get Account ERROR ' + data.status + '. ' + error
         );
-        return cb(data.error);
+        return cb(error);
       }
     );
   }
@@ -437,6 +458,6 @@ export class ShapeshiftProvider {
       : err.error.error && err.error.error.message
       ? err.error.error.message
       : err.error;
-    return parsedError;
+    return parsedError.message || parsedError;
   }
 }

@@ -1,11 +1,4 @@
 confirm-card-purchase-page {
-  ion-content {
-    .fixed-content,
-    .scroll-content {
-      margin-bottom: 90px;
-    }
-  }
-
   .wallets-list {
     ion-label {
       margin-bottom: 8px;
@@ -21,8 +14,6 @@ confirm-card-purchase-page {
   }
 
   .confirm-header {
-    padding-top: 25px;
-
     ion-label {
       display: flex;
       align-items: center;
@@ -33,6 +24,8 @@ confirm-card-purchase-page {
     }
 
     .card-list-item__icon {
+      flex-shrink: 0;
+
       img {
         border: 1px #9ba3ae solid;
         border-radius: 50%;
@@ -44,8 +37,7 @@ confirm-card-purchase-page {
   }
 
   .gift-card-title {
-    display: flex;
-    align-items: center;
+    display: block;
     margin-bottom: 1.2rem;
     margin-top: 1.2rem;
     font-size: 18px;

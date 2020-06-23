@@ -1,76 +1,57 @@
+page-coinbase-account,
 page-wallet-details {
   $icon-width: 36px;
 
-  ion-refresher {
-    height: 120px;
-
-    &-content {
-      margin-top: -25px;
-    }
-
-    .refresher-pulling ion-icon {
-      color: white;
-    }
-
-    .refresher-refreshing {
-      .spinner-crescent circle,
-      .spinner-ios line {
-        stroke: white;
-      }
-    }
-  }
-
-  ion-header,
-  .toolbar-background {
-    background-color: rgba(0, 0, 0, 0) !important;
-
-    &:after {
-      height: 0 !important;
-    }
-  }
-
-  .search-icon {
-    font-size: 2.5rem;
-  }
-
   .balance-card {
-    // background: color($colors, primary);
-    background: linear-gradient(180deg, #14245e -0%, #22378c);
     overflow: hidden;
+    background-color: white;
   }
 
   .balance-header {
     position: relative;
-    margin-top: 15px;
-    margin-left: 5rem;
-    height: 17rem;
-    color: color($colors, light);
+    margin: 1rem 2rem 1rem 2rem;
+    height: 23rem;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    justify-content: center;
+    justify-content: space-around;
+  }
+
+  .balance-container {
+    margin-left: 1rem;
+  }
+
+  .wallet-name {
+    font-size: 23px;
+    font-weight: 600;
   }
 
   .balance-str {
     cursor: pointer;
-    font-size: 32px;
-    font-weight: 600;
-
-    @media (max-width: 350px) {
-      font-size: 28px;
+    font-size: 38px;
+    font-weight: 500;
+    display: flex;
+    align-items: baseline;
+    img {
+      margin-left: 6px;
     }
   }
 
   .balance-alt-str {
     padding-top: 10px;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 400;
-    opacity: 0.7;
+    opacity: 0.5;
+    line-height: 24px;
+  }
+  .balance-content {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
   }
 
   .balance-hidden {
-    width: 100vw;
-    margin-left: -5rem;
+    width: 100%;
     text-align: center;
 
     .title {
@@ -94,21 +75,41 @@ page-wallet-details {
   }
 
   .balance-spendable {
-    margin-top: 5px;
     font-size: 13px;
     cursor: pointer;
-    opacity: 0.7;
-
     ion-icon {
       vertical-align: text-bottom;
       margin-right: 5px;
     }
   }
 
+  .action-buttons {
+    transform: inherit;
+    opacity: inherit;
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0 1.4rem 3rem 1.4rem;
+    .button-standard {
+      color: #000000;
+      font-weight: bold;
+      background-color: rgba(155, 163, 174, 0.07);
+      min-height: 50px;
+      width: 48%;
+      max-width: none;
+      margin: 0;
+    }
+    .button-standard.button-md.activated {
+      background-color: rgba(155, 163, 174, 0.07);
+      box-shadow: none;
+    }
+  }
+
   .balance-scanning {
-    width: 100vw;
-    margin-left: -5rem;
+    display: flex;
+    justify-content: center;
     text-align: center;
+    width: 100%;
 
     .title {
       font-size: 20px;
@@ -116,19 +117,10 @@ page-wallet-details {
     }
   }
 
-  .fix-margin {
-    margin-top: -4.5rem;
-  }
-
-  .history-wrapper {
-    padding: 0rem 1.3rem;
-  }
-
   .tx-history {
     .tx-history-header {
       height: 5rem;
       border-bottom: 0;
-      border-radius: 5px 5px 0 0;
 
       .ng-star-inserted {
         font-size: 18px;
@@ -155,6 +147,7 @@ page-wallet-details {
 
         .item-inner {
           padding: 0 !important;
+          border: none;
         }
       }
 
@@ -205,6 +198,9 @@ page-wallet-details {
     }
 
     .amount {
+      font-weight: bold;
+      font-size: 16px;
+      line-height: 24px;
       color: color($colors, dark);
 
       .received {
@@ -215,6 +211,9 @@ page-wallet-details {
     .date {
       font-size: 14px;
       margin-top: 8px;
+      opacity: 0.4;
+      font-weight: 300;
+      color: #434d5a;
     }
 
     .proposal-container {
@@ -237,14 +236,23 @@ page-wallet-details {
     text-align: center;
   }
 
+  .search-button {
+    padding: 0 6px 0 0;
+  }
+
   .wallet-info {
-    font-weight: 400;
-    color: color($colors, light);
-    display: block;
+    transform: inherit;
+    opacity: inherit;
+    height: 35px;
+    width: 100%;
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    height: 3rem;
-    padding: 0 0.5rem 7rem 0;
+    padding: 0 1rem 0.8rem 1.4rem;
+    font-weight: 400;
+    .left-buttons {
+      opacity: 0.5;
+    }
 
     img {
       float: left;
@@ -265,22 +273,8 @@ page-wallet-details {
 
     .read-only {
       height: 3rem;
-      width: 2rem;
-    }
-
-    .read-only-text {
-      height: 3rem;
-      width: 5rem;
-    }
-
-    .auditable-text {
-      height: 3rem;
-      width: 4rem;
-    }
-
-    .custom-bws {
-      height: 3rem;
-      width: 3rem;
+      width: 1.8rem;
+      filter: invert(1);
     }
 
     .encrypted {
@@ -297,14 +291,17 @@ page-wallet-details {
       font-size: 11px;
     }
 
-    .left-buttons {
-      flex-grow: 1;
-      padding-left: 1.3rem;
-      opacity: 0.5;
-    }
-
-    .search-button {
-      padding: 0 6px 0 0;
+    .square-border {
+      vertical-align: text-top;
+      span {
+        border: 1px solid #000000;
+        padding: 0 3px 0 3px;
+        border-radius: 3px;
+        font-weight: 600;
+        font-size: 11px;
+        letter-spacing: -0.2px;
+        white-space: nowrap;
+      }
     }
 
     ion-spinner {
@@ -313,7 +310,7 @@ page-wallet-details {
       height: 20px;
 
       * {
-        stroke: color($colors, light);
+        stroke: color($colors, primary);
       }
     }
   }
@@ -329,7 +326,6 @@ page-wallet-details {
   .locked-balance.item {
     background-color: color($background-colors, warning);
     cursor: pointer;
-    border-radius: 0 0 5px 5px;
 
     .item-inner {
       padding-bottom: 5px;
@@ -359,7 +355,6 @@ page-wallet-details {
 
   .top-notification {
     cursor: pointer;
-    position: absolute;
     top: 0;
     &.warning {
       color: color($colors, warning);
@@ -368,5 +363,15 @@ page-wallet-details {
       vertical-align: middle;
       margin-left: 5px;
     }
+  }
+  .ion-ios-alert-outline:before {
+    color: color($colors, warning);
+    font-size: 44px;
+  }
+  .warning-background {
+    background-color: color($background-colors, warning);
+  }
+  .danger-background {
+    background-color: color($background-colors, danger);
   }
 }

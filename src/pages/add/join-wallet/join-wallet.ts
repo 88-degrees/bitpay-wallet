@@ -1,25 +1,31 @@
 import { Component } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { TranslateService } from '@ngx-translate/core';
-import { App, Events, NavController, NavParams } from 'ionic-angular';
+import {
+  Events,
+  ModalController,
+  NavController,
+  NavParams
+} from 'ionic-angular';
 
 // Pages
+import { CopayersPage } from '../../add/copayers/copayers';
 import { ScanPage } from '../../scan/scan';
-import { TabsPage } from '../../tabs/tabs';
+import { WalletDetailsPage } from '../../wallet-details/wallet-details';
 
 // Providers
-import { ActionSheetProvider } from '../../../providers/action-sheet/action-sheet';
+import { BwcErrorProvider } from '../../../providers/bwc-error/bwc-error';
 import { BwcProvider } from '../../../providers/bwc/bwc';
 import { ClipboardProvider } from '../../../providers/clipboard/clipboard';
 import { ConfigProvider } from '../../../providers/config/config';
+import { Coin } from '../../../providers/currency/currency';
 import { DerivationPathHelperProvider } from '../../../providers/derivation-path-helper/derivation-path-helper';
+import { ErrorsProvider } from '../../../providers/errors/errors';
 import { Logger } from '../../../providers/logger/logger';
 import { OnGoingProcessProvider } from '../../../providers/on-going-process/on-going-process';
-import { PopupProvider } from '../../../providers/popup/popup';
 import { ProfileProvider } from '../../../providers/profile/profile';
 import { PushNotificationsProvider } from '../../../providers/push-notifications/push-notifications';
 import {
-  Coin,
   WalletOptions,
   WalletProvider
 } from '../../../providers/wallet/wallet';
@@ -43,7 +49,7 @@ export class JoinWalletPage {
   private coin: Coin;
 
   constructor(
-    private app: App,
+    private bwcErrorProvider: BwcErrorProvider,
     private bwcProvider: BwcProvider,
     private configProvider: ConfigProvider,
     private form: FormBuilder,
@@ -51,25 +57,24 @@ export class JoinWalletPage {
     private navParams: NavParams,
     private derivationPathHelperProvider: DerivationPathHelperProvider,
     private onGoingProcessProvider: OnGoingProcessProvider,
-    private popupProvider: PopupProvider,
     private profileProvider: ProfileProvider,
     private walletProvider: WalletProvider,
     private logger: Logger,
     private translate: TranslateService,
     private events: Events,
     private pushNotificationsProvider: PushNotificationsProvider,
-    private actionSheetProvider: ActionSheetProvider,
-    private clipboardProvider: ClipboardProvider
+    private clipboardProvider: ClipboardProvider,
+    private modalCtrl: ModalController,
+    private errorsProvider: ErrorsProvider
   ) {
     this.okText = this.translate.instant('Ok');
     this.cancelText = this.translate.instant('Cancel');
     this.defaults = this.configProvider.getDefaults();
     this.showAdvOpts = false;
-    this.keyId = this.navParams.get('keyId');
+    this.keyId = this.navParams.data.keyId;
 
     this.regex = /^[0-9A-HJ-NP-Za-km-z]{70,80}$/; // For invitationCode
     this.joinForm = this.form.group({
-      walletName: [null, Validators.required],
       myName: [null, Validators.required],
       invitationCode: [
         null,
@@ -128,14 +133,10 @@ export class JoinWalletPage {
       this.joinForm.controls['invitationCode'].setValue(data);
       this.processInvitation(data);
     } else {
-      const errorInfoSheet = this.actionSheetProvider.createInfoSheet(
-        'default-error',
-        {
-          msg: this.translate.instant('Invalid data'),
-          title: this.translate.instant('Error')
-        }
+      this.errorsProvider.showDefaultError(
+        this.translate.instant('Invalid data'),
+        this.translate.instant('Error')
       );
-      errorInfoSheet.present();
     }
   }
 
@@ -183,7 +184,6 @@ export class JoinWalletPage {
   public setOptsAndJoin(): void {
     const opts: Partial<WalletOptions> = {
       keyId: this.keyId,
-      name: this.joinForm.value.walletName,
       secret: this.joinForm.value.invitationCode,
       myName: this.joinForm.value.myName,
       bwsurl: this.joinForm.value.bwsURL,
@@ -214,6 +214,25 @@ export class JoinWalletPage {
         derivationPath
       );
 
+      // set opts.useLegacyPurpose
+      if (
+        this.derivationPathHelperProvider.parsePath(derivationPath).purpose ==
+        "44'"
+      ) {
+        opts.useLegacyPurpose = true;
+        this.logger.debug('Using 44 for Multisig');
+      }
+
+      // set opts.useLegacyCoinType
+      if (
+        this.coin == 'bch' &&
+        this.derivationPathHelperProvider.parsePath(derivationPath).coinCode ==
+          "0'"
+      ) {
+        opts.useLegacyCoinType = true;
+        this.logger.debug('Using 0 for BCH creation');
+      }
+
       if (
         !opts.networkName ||
         !opts.derivationStrategy ||
@@ -221,7 +240,7 @@ export class JoinWalletPage {
       ) {
         const title = this.translate.instant('Error');
         const subtitle = this.translate.instant('Invalid derivation path');
-        this.popupProvider.ionicAlert(title, subtitle);
+        this.errorsProvider.showDefaultError(subtitle, title);
         return;
       }
 
@@ -235,7 +254,7 @@ export class JoinWalletPage {
         const subtitle = this.translate.instant(
           'Invalid derivation path for selected coin'
         );
-        this.popupProvider.ionicAlert(title, subtitle);
+        this.errorsProvider.showDefaultError(subtitle, title);
         return;
       }
     }
@@ -245,7 +264,7 @@ export class JoinWalletPage {
       const subtitle = this.translate.instant(
         'Please enter the wallet recovery phrase'
       );
-      this.popupProvider.ionicAlert(title, subtitle);
+      this.errorsProvider.showDefaultError(subtitle, title);
       return;
     }
 
@@ -254,36 +273,43 @@ export class JoinWalletPage {
 
   private join(opts): void {
     this.onGoingProcessProvider.set('joiningWallet');
-    const addingNewWallet = this.keyId ? true : false;
+    opts['keyId'] = this.keyId;
     this.profileProvider
-      .joinWallet(addingNewWallet, opts)
+      .joinWallet(opts)
       .then(wallet => {
         this.clipboardProvider.clearClipboardIfValidData(['JoinWallet']);
         this.onGoingProcessProvider.clear();
         this.walletProvider.updateRemotePreferences(wallet);
         this.pushNotificationsProvider.updateSubscription(wallet);
-        if (!addingNewWallet) {
-          this.profileProvider.setWalletGroupName(
-            wallet.credentials.keyId,
-            wallet.credentials.walletName
-          );
-        }
-        // using setRoot(TabsPage) as workaround when coming from scanner
-        this.app
-          .getRootNavs()[0]
-          .setRoot(TabsPage)
-          .then(() => {
-            this.events.publish('Local/WalletListChange');
 
-            setTimeout(() => {
-              this.events.publish('OpenWallet', wallet);
-            }, 1000);
-          });
+        this.navCtrl.popToRoot({ animate: false }).then(() => {
+          setTimeout(() => {
+            if (wallet.isComplete()) {
+              this.navCtrl.push(WalletDetailsPage, {
+                walletId: wallet.credentials.walletId
+              });
+            } else {
+              const copayerModal = this.modalCtrl.create(
+                CopayersPage,
+                {
+                  walletId: wallet.credentials.walletId
+                },
+                {
+                  cssClass: 'wallet-details-modal'
+                }
+              );
+              copayerModal.present();
+            }
+          }, 1000);
+        });
       })
       .catch(err => {
         this.onGoingProcessProvider.clear();
         const title = this.translate.instant('Error');
-        this.popupProvider.ionicAlert(title, err);
+        this.errorsProvider.showDefaultError(
+          this.bwcErrorProvider.msg(err),
+          title
+        );
         return;
       });
   }

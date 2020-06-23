@@ -1,3 +1,5 @@
+import { DirectoryCategory, DirectoryCuration } from '../directory/directory';
+
 export enum ClaimCodeType {
   barcode = 'barcode',
   code = 'code',
@@ -7,12 +9,36 @@ export enum ClaimCodeType {
 export interface GiftCardDiscount {
   hidden: boolean;
   code: string;
-  type: 'percentage';
+  type: 'flatrate' | 'percentage';
   amount: number;
+  currency?: string;
+  value?: string;
+}
+
+export interface GiftCardActivationFee {
+  amountRange: {
+    min: number;
+    max: number;
+  };
+  fee: number;
+  type: 'fixed' | 'percentage';
+}
+
+export interface GiftCardPromotion {
+  cta?: string;
+  description: string;
+  details: string;
+  icon: string;
+  shortDescription: string;
+  title: string;
 }
 
 export interface CommonCardConfig {
+  activationFees?: GiftCardActivationFee[];
+  brandColor?: string;
   cardImage: string;
+  categories: DirectoryCategory[];
+  curations: DirectoryCuration[];
   currency: string;
   defaultClaimCodeType: ClaimCodeType;
   description?: string;
@@ -23,13 +49,18 @@ export interface CommonCardConfig {
   hidden?: boolean;
   hidePin?: boolean;
   icon: string;
+  integersOnly?: boolean;
   logo: string;
   logoBackgroundColor: string;
   minAmount?: number;
   maxAmount?: number;
   printRequired?: boolean;
+  promotions?: GiftCardPromotion[];
+  redeemButtonText?: string;
   redeemInstructions?: string;
   redeemUrl?: string;
+  supportedUrls?: string;
+  tags?: string[];
   terms: string;
   website: string;
 }
@@ -44,6 +75,8 @@ export interface GiftCard {
   accessKey: string;
   amount: number;
   archived: boolean;
+  barcodeData?: string;
+  barcodeFormat?: string;
   barcodeImage?: string;
   claimCode: string;
   claimLink?: string;

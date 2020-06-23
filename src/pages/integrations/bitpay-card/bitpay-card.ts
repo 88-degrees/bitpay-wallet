@@ -1,5 +1,4 @@
 import { Component } from '@angular/core';
-import { StatusBar } from '@ionic-native/status-bar';
 import { TranslateService } from '@ngx-translate/core';
 import { NavController, NavParams } from 'ionic-angular';
 import { Logger } from '../../../providers/logger/logger';
@@ -13,10 +12,13 @@ import { BitPayProvider } from '../../../providers/bitpay/bitpay';
 import { ExternalLinkProvider } from '../../../providers/external-link/external-link';
 import { PlatformProvider } from '../../../providers/platform/platform';
 import { PopupProvider } from '../../../providers/popup/popup';
+import { ThemeProvider } from '../../../providers/theme/theme';
 import { TimeProvider } from '../../../providers/time/time';
 
 import * as _ from 'lodash';
 import * as moment from 'moment';
+
+const TIMEOUT_FOR_REFRESHER = 1000;
 
 @Component({
   selector: 'page-bitpay-card',
@@ -37,6 +39,7 @@ export class BitPayCardPage {
   public currency: string;
   public okText: string;
   public cancelText: string;
+  public backgroundColor: string;
 
   constructor(
     private translate: TranslateService,
@@ -48,8 +51,8 @@ export class BitPayCardPage {
     private externalLinkProvider: ExternalLinkProvider,
     private navParams: NavParams,
     private navCtrl: NavController,
-    private statusBar: StatusBar,
-    private platformProvider: PlatformProvider
+    private platformProvider: PlatformProvider,
+    private themeProvider: ThemeProvider
   ) {
     this.okText = this.translate.instant('Ok');
     this.cancelText = this.translate.instant('Cancel');
@@ -61,33 +64,55 @@ export class BitPayCardPage {
 
     if (!this.cardId) this.navCtrl.pop();
 
-    this.bitPayCardProvider.get(
-      {
-        cardId: this.cardId,
-        noRefresh: true
-      },
-      (_, cards) => {
+    this.bitPayCardProvider
+      .get({
+        cardId: this.cardId
+      })
+      .then(cards => {
         if (cards && cards[0]) {
           this.lastFourDigits = cards[0].lastFourDigits;
           this.balance = cards[0].balance;
           this.updatedOn = cards[0].updatedOn;
           this.currency = cards[0].currency;
+          this.setDateTime(cards[0].history);
+          this.setHistory(cards[0].history);
         }
         this.update();
-      }
-    );
+      });
   }
 
   ionViewWillEnter() {
-    if (this.platformProvider.isIOS) {
-      this.statusBar.styleLightContent();
+    this.backgroundColor = this.themeProvider.isDarkModeEnabled()
+      ? this.themeProvider.getThemeInfo().walletDetailsBackgroundStart
+      : '#0c204e';
+    if (this.platformProvider.isCordova) {
+      this.themeProvider.useCustomStatusBar('#0c204e');
     }
   }
 
+  ionViewDidEnter() {
+    this.bitPayCardProvider.logEvent('legacycard_view', {});
+  }
+
   ionViewWillLeave() {
-    if (this.platformProvider.isIOS) {
-      this.statusBar.styleDefault();
+    if (this.platformProvider.isCordova) {
+      this.themeProvider.useDefaultStatusBar();
     }
+  }
+
+  logLegacyCardTopupStartEvent() {
+    this.bitPayCardProvider.logEvent('legacycard_topup_start', {});
+  }
+
+  logLegacyCardViewAmountItem() {
+    this.bitPayCardProvider.logEvent('view_item', {
+      items: [
+        {
+          name: 'legacyCard',
+          category: 'debitCard'
+        }
+      ]
+    });
   }
 
   private setDateRange(preset: string) {
@@ -170,19 +195,7 @@ export class BitPayCardPage {
           let txs = _.clone(history.txs);
 
           this.setDateTime(txs);
-
-          this.bitpayCardTransactionHistoryConfirming = this.bitPayCardProvider.filterTransactions(
-            'confirming',
-            txs
-          );
-          this.bitpayCardTransactionHistoryCompleted = this.bitPayCardProvider.filterTransactions(
-            'completed',
-            txs
-          );
-          this.bitpayCardTransactionHistoryPreAuth = this.bitPayCardProvider.filterTransactions(
-            'preAuth',
-            txs
-          );
+          this.setHistory(txs);
 
           this.balance = history.currentCardBalance;
           this.updatedOn = null;
@@ -204,11 +217,29 @@ export class BitPayCardPage {
     );
   }
 
+  private setHistory(txs) {
+    if (!txs) return;
+    this.bitpayCardTransactionHistoryConfirming = this.bitPayCardProvider.filterTransactions(
+      'confirming',
+      txs
+    );
+    this.bitpayCardTransactionHistoryCompleted = this.bitPayCardProvider.filterTransactions(
+      'completed',
+      txs
+    );
+    this.bitpayCardTransactionHistoryPreAuth = this.bitPayCardProvider.filterTransactions(
+      'preAuth',
+      txs
+    );
+  }
+
   private setDateTime(txs) {
+    if (!txs) return;
     let txDate, txDateUtc;
     let newDate;
     for (let i = 0; i < txs.length; i++) {
       txDate = new Date(txs[i].date);
+      if (txDate == 'Invalid Date') return; // iOS
       txDateUtc = new Date(txs[i].date.replace('Z', ''));
       let amTime = this.createdWithinPastDay(txs[i]);
       newDate = amTime
@@ -246,28 +277,19 @@ export class BitPayCardPage {
     );
   }
 
-  public viewOnBlockchain(transactionId: string) {
-    let url = 'https://insight.bitpay.com/tx/' + transactionId;
-    let optIn = true;
-    let title = null;
-    let message = this.translate.instant('View Transaction on Insight');
-    let okText = this.translate.instant('Open Insight');
-    let cancelText = this.translate.instant('Go Back');
-    this.externalLinkProvider.open(
-      url,
-      optIn,
-      title,
-      message,
-      okText,
-      cancelText
-    );
-  }
-
   public topUp(): void {
+    this.logLegacyCardTopupStartEvent();
     this.navCtrl.push(AmountPage, {
       id: this.cardId,
       nextPage: 'BitPayCardTopUpPage',
       currency: this.currency
     });
+  }
+
+  public doRefresh(refresher): void {
+    this.update();
+    setTimeout(() => {
+      refresher.complete();
+    }, TIMEOUT_FOR_REFRESHER);
   }
 }

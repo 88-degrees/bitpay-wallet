@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { CoinsMap, CurrencyProvider } from '../../providers/currency/currency';
 import { Logger } from '../../providers/logger/logger';
 import { PersistenceProvider } from '../persistence/persistence';
 
@@ -66,14 +67,27 @@ export interface Config {
     amazon: boolean;
     mercadolibre: boolean;
     shapeshift: boolean;
+    simplex: boolean;
     giftcards: boolean;
   };
 
-  pushNotificationsEnabled: boolean;
+  pushNotifications: {
+    enabled: boolean;
+  };
 
-  desktopNotificationsEnabled: boolean;
+  desktopNotifications: {
+    enabled: boolean;
+  };
 
   confirmedTxsNotifications: {
+    enabled: boolean;
+  };
+
+  productsUpdates: {
+    enabled: boolean;
+  };
+
+  offersAndPromotions: {
     enabled: boolean;
   };
 
@@ -92,12 +106,23 @@ export interface Config {
     weight: number;
   };
 
-  blockExplorerUrl: {
-    btc: string;
-    bch: string;
-  };
+  blockExplorerUrl: CoinsMap<string>;
 
   allowMultiplePrimaryWallets: boolean;
+
+  legacyQrCode: {
+    show: boolean;
+  };
+
+  theme: {
+    enabled: boolean;
+    system: boolean;
+    name: string;
+  };
+
+  totalBalance: {
+    show: boolean;
+  };
 }
 
 @Injectable()
@@ -106,6 +131,7 @@ export class ConfigProvider {
   public readonly configDefault: Config;
 
   constructor(
+    private currencyProvider: CurrencyProvider,
     private logger: Logger,
     private persistence: PersistenceProvider
   ) {
@@ -174,19 +200,32 @@ export class ConfigProvider {
 
       // External services
       showIntegration: {
-        coinbase: false,
+        coinbase: true,
         debitcard: true,
         amazon: true,
         mercadolibre: true,
         shapeshift: true,
+        simplex: true,
         giftcards: true
       },
 
-      pushNotificationsEnabled: true,
+      pushNotifications: {
+        enabled: true
+      },
 
-      desktopNotificationsEnabled: true,
+      desktopNotifications: {
+        enabled: true
+      },
 
       confirmedTxsNotifications: {
+        enabled: true
+      },
+
+      productsUpdates: {
+        enabled: true
+      },
+
+      offersAndPromotions: {
         enabled: true
       },
 
@@ -199,12 +238,23 @@ export class ConfigProvider {
         weight: 3
       },
 
-      blockExplorerUrl: {
-        btc: 'insight.bitcore.io/#/BTC/',
-        bch: 'insight.bitcore.io/#/BCH/'
+      blockExplorerUrl: this.currencyProvider.getBlockExplorerUrls(),
+
+      allowMultiplePrimaryWallets: false,
+
+      legacyQrCode: {
+        show: false
       },
 
-      allowMultiplePrimaryWallets: false
+      theme: {
+        enabled: false,
+        system: true,
+        name: 'light'
+      },
+
+      totalBalance: {
+        show: true
+      }
     };
   }
 
@@ -282,12 +332,18 @@ export class ConfigProvider {
       if (this.configCache.showIntegration.giftcards !== false) {
         this.configCache.showIntegration.giftcards = this.configDefault.showIntegration.giftcards;
       }
+      if (this.configCache.showIntegration.simplex !== false) {
+        this.configCache.showIntegration.simplex = this.configDefault.showIntegration.simplex;
+      }
+      if (this.configCache.showIntegration.coinbase !== false) {
+        this.configCache.showIntegration.coinbase = this.configDefault.showIntegration.coinbase;
+      }
     }
-    if (!this.configCache.pushNotificationsEnabled) {
-      this.configCache.pushNotificationsEnabled = this.configDefault.pushNotificationsEnabled;
+    if (!this.configCache.pushNotifications) {
+      this.configCache.pushNotifications = this.configDefault.pushNotifications;
     }
-    if (!this.configCache.desktopNotificationsEnabled) {
-      this.configCache.desktopNotificationsEnabled = this.configDefault.desktopNotificationsEnabled;
+    if (!this.configCache.desktopNotifications) {
+      this.configCache.desktopNotifications = this.configDefault.desktopNotifications;
     }
     if (!this.configCache.emailNotifications) {
       this.configCache.emailNotifications = this.configDefault.emailNotifications;
@@ -306,5 +362,21 @@ export class ConfigProvider {
       this.configCache.wallet.settings.unitDecimals = this.configDefault.wallet.settings.unitDecimals;
       this.configCache.wallet.settings.unitCode = this.configDefault.wallet.settings.unitCode;
     }
+
+    if (!this.configCache.theme || !this.configCache.theme.enabled) {
+      this.configCache.theme = this.configDefault.theme;
+    }
+
+    if (!this.configCache.totalBalance) {
+      this.configCache.totalBalance = this.configDefault.totalBalance;
+    }
+
+    if (!this.configCache.legacyQrCode) {
+      this.configCache.legacyQrCode = this.configDefault.legacyQrCode;
+    }
+  }
+
+  public reset() {
+    this.persistence.clearConfig();
   }
 }

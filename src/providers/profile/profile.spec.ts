@@ -1,4 +1,4 @@
-/* import { Events } from 'ionic-angular';
+import { Events } from 'ionic-angular';
 import * as _ from 'lodash';
 import { Observable } from 'rxjs';
 
@@ -14,6 +14,7 @@ import { ConfigProvider } from '../config/config';
 import { PlatformProvider } from '../platform/platform';
 import { PopupProvider } from '../popup/popup';
 import { ProfileProvider } from '../profile/profile';
+import { RateProvider } from '../rate/rate';
 import { ReplaceParametersProvider } from '../replace-parameters/replace-parameters';
 import { TxFormatProvider } from '../tx-format/tx-format';
 
@@ -30,10 +31,12 @@ describe('Profile Provider', () => {
   let replaceParametersProvider: ReplaceParametersProvider;
   let platformProvider: PlatformProvider;
   let txFormatProvider: TxFormatProvider;
+  let persistenceProvider: PersistenceProvider;
 
   const walletMock = {
     id1: {
       id: 'id1',
+      coin: 'btc',
       copayerId: 'copayerId1',
       lastKnownBalance: '10.00 BTC',
       lastKnownBalanceUpdatedOn: null,
@@ -42,7 +45,10 @@ describe('Profile Provider', () => {
         network: 'livenet',
         n: 1,
         m: 1,
-        walletId: 'id1'
+        walletId: 'id1',
+        rootPath: "m/44'/0'/0'",
+        addressType: 'P2PKH',
+        keyId: 'keyId1'
       },
       cachedStatus: {
         availableBalanceSat: 1000000000 // 10 BTC
@@ -66,6 +72,7 @@ describe('Profile Provider', () => {
     },
     id2: {
       id: 'id2',
+      coin: 'btc',
       copayerId: 'copayerId2',
       lastKnownBalance: '5.00 BCH',
       lastKnownBalanceUpdatedOn: null,
@@ -74,7 +81,10 @@ describe('Profile Provider', () => {
         network: 'livenet',
         n: 1,
         m: 1,
-        walletId: 'id2'
+        walletId: 'id2',
+        rootPath: "m/44'/0'/0'",
+        addressType: 'P2PKH',
+        keyId: 'keyId2'
       },
       cachedStatus: {
         availableBalanceSat: 500000000 // 5 BCH
@@ -93,6 +103,7 @@ describe('Profile Provider', () => {
     },
     id3: {
       id: 'id3',
+      coin: 'btc',
       copayerId: 'copayerId3',
       lastKnownBalance: '1.50 BTC',
       lastKnownBalanceUpdatedOn: null,
@@ -101,7 +112,10 @@ describe('Profile Provider', () => {
         network: 'testnet',
         n: 2,
         m: 2,
-        walletId: 'id3'
+        walletId: 'id3',
+        rootPath: "m/44'/0'/0'",
+        addressType: 'P2PKH',
+        keyId: 'keyId1'
       },
       cachedStatus: {
         availableBalanceSat: 150000000 // 1.50 BTC
@@ -124,14 +138,20 @@ describe('Profile Provider', () => {
   };
 
   const walletClientMock = {
+    id: 'id1',
     copayerId: 'copayerId1',
+    n: 1,
+    m: 1,
     credentials: {
       coin: 'btc',
       network: 'livenet',
       n: 1,
       m: 1,
       walletId: 'id1',
-      keyId: 'keyId'
+      keyId: 'keyId',
+      rootPath: "m/44'/0'/0'",
+      addressType: 'P2PKH',
+      walletName: 'walletName'
     },
     canSign: () => {
       return true;
@@ -266,8 +286,9 @@ describe('Profile Provider', () => {
     constructor() {}
     getErrors() {
       return {
-        NOT_AUTHORIZED: new Error('not authorized'),
-        ERROR: new Error('error')
+        NOT_AUTHORIZED: Error,
+        ERROR: Error,
+        COPAYER_REGISTERED: Error
       };
     }
     getBitcore() {
@@ -322,22 +343,26 @@ describe('Profile Provider', () => {
     }
     upgradeMultipleCredentialsV1(_oldCredentials) {
       const migrated = {
-        credentials: {
-          walletId: 'id1',
-          keyId: 'keyId1',
-          m: 1,
-          n: 1
-        },
-        keys: {
-          mnemonic: 'mom mom mom mom mom mom mom mom mom mom mom mom',
-          xPrivKey: 'xPrivKey1',
-          isPrivKeyEncrypted: () => {
-            return false;
-          },
-          toObj: () => {
-            return false;
+        credentials: [
+          {
+            walletId: 'id1',
+            keyId: 'keyId1',
+            m: 1,
+            n: 1
           }
-        }
+        ],
+        keys: [
+          {
+            mnemonic: 'mom mom mom mom mom mom mom mom mom mom mom mom',
+            xPrivKey: 'xPrivKey1',
+            isPrivKeyEncrypted: () => {
+              return false;
+            },
+            toObj: () => {
+              return false;
+            }
+          }
+        ]
       };
       return migrated;
     }
@@ -362,88 +387,9 @@ describe('Profile Provider', () => {
     }
   }
 
-  class PersistenceProviderMock {
-    constructor() {}
-    setBackupFlag(_walletId) {
-      return Promise.resolve();
-    }
-    setWalletOrder() {
-      return Promise.resolve();
-    }
-    getWalletOrder() {
-      return Promise.resolve(1);
-    }
-    getHideBalanceFlag(_walletId) {
-      return Promise.resolve(true);
-    }
-    storeProfileLegacy(_profileOld) {
-      return Promise.resolve();
-    }
-    storeProfile(_profile) {
-      return Promise.resolve();
-    }
-    getAddressBook(_network: string) {
-      return Promise.resolve('{"name": "Gabriel Loco"}');
-    }
-    setAddressBook(_network: string, _strAddressBook: string) {
-      return Promise.resolve();
-    }
-    storeNewProfile(_profile) {
-      return Promise.resolve();
-    }
-    getCopayDisclaimerFlag() {
-      return Promise.resolve(true);
-    }
-    getKeys() {
-      return Promise.resolve(keysArrayFromStorage);
-    }
-    setKeys() {
-      return Promise.resolve();
-    }
-    getProfile() {
-      const profile = {
-        createdOn: Date.now(),
-        checkedUA: true
-      };
-      return Promise.resolve(profile);
-    }
-    removeAllWalletData(_walletId: string) {
-      return;
-    }
-    getLastKnownBalance(_id: string) {
-      let lastKnownBalance;
-      switch (_id) {
-        case 'id1':
-          lastKnownBalance = {
-            balance: '10.00 BTC',
-            updatedOn: 1558382053803
-          };
-          break;
-
-        case 'id2':
-          lastKnownBalance = {
-            balance: '5.00 BCH',
-            updatedOn: 1558382068661
-          };
-          break;
-        default:
-          lastKnownBalance = {
-            balance: '0.00 BTC',
-            updatedOn: Date.now()
-          };
-          break;
-      }
-      return Promise.resolve(lastKnownBalance);
-    }
-    setHideBalanceFlag(_walletId: string, _balanceHidden: boolean) {
-      return;
-    }
-  }
-
   beforeEach(async () => {
     testBed = TestUtils.configureProviderTestingModule([
-      { provide: BwcProvider, useClass: BwcProviderMock },
-      { provide: PersistenceProvider, useClass: PersistenceProviderMock }
+      { provide: BwcProvider, useClass: BwcProviderMock }
     ]);
     profileProvider = testBed.get(ProfileProvider);
     actionSheetProvider = testBed.get(ActionSheetProvider);
@@ -453,6 +399,8 @@ describe('Profile Provider', () => {
     replaceParametersProvider = testBed.get(ReplaceParametersProvider);
     platformProvider = testBed.get(PlatformProvider);
     txFormatProvider = testBed.get(TxFormatProvider);
+    persistenceProvider = testBed.get(PersistenceProvider);
+    persistenceProvider.load();
 
     profileProvider.wallet = _.clone(walletMock);
     profileProvider.profile = Profile.create();
@@ -484,20 +432,39 @@ describe('Profile Provider', () => {
     });
   });
 
-  describe('getWalletOrder', () => {
-    it('should get the correct order from persistenceProvider if it is defined', () => {
-      const walletId: string = 'id1';
-      profileProvider.getWalletOrder(walletId).then(order => {
-        expect(order).toBe(1);
-      });
+  describe('setBackupGroupFlag', () => {
+    let keyId: string;
+    beforeEach(() => {
+      keyId = 'id3';
+      profileProvider.walletsGroups[keyId] = {};
+    });
+    it('should set needsBackup to false for a specified keyId if !migrating', () => {
+      profileProvider.setBackupGroupFlag(keyId);
+      expect(profileProvider.walletsGroups[keyId].needsBackup).toBeFalsy();
+    });
+
+    it('should not set needsBackup to false for a specified keyId if migrating', () => {
+      const migrating = true;
+      profileProvider.setBackupGroupFlag(keyId, null, migrating);
+      expect(profileProvider.walletsGroups[keyId].needsBackup).toBeUndefined();
+    });
+
+    it('should return if !keyId', () => {
+      keyId = undefined;
+      const setBackupGroupFlagSpy = spyOn(
+        persistenceProvider,
+        'setBackupGroupFlag'
+      );
+      profileProvider.setBackupGroupFlag(keyId);
+      expect(setBackupGroupFlagSpy).not.toHaveBeenCalled();
     });
   });
 
-  describe('setBackupFlag', () => {
+  describe('setWalletBackup', () => {
     it('should set needsBackup to false for a specified walletId', () => {
       const walletId: string = 'id3';
-      profileProvider.setBackupFlag(walletId);
-      expect(profileProvider.wallet.id3.needsBackup).toBeFalsy();
+      profileProvider.setWalletBackup(walletId);
+      expect(profileProvider.wallet[walletId].needsBackup).toBeFalsy();
     });
   });
 
@@ -536,24 +503,30 @@ describe('Profile Provider', () => {
   });
 
   describe('storeProfileIfDirty', () => {
-    it('should store the profile if it is dirty', async () => {
+    let storeProfileSpy;
+    beforeEach(() => {
+      storeProfileSpy = spyOn(persistenceProvider, 'storeProfile');
+    });
+    it('should store the profile if it is dirty', () => {
       profileProvider.profile.dirty = true;
-      await profileProvider
+      storeProfileSpy.and.returnValue(Promise.resolve());
+      profileProvider
         .storeProfileIfDirty()
         .then(() => {
-          expect().nothing();
+          expect(storeProfileSpy).toHaveBeenCalledWith(profileProvider.profile);
         })
         .catch(err => {
           expect(err).not.toBeDefined();
         });
     });
 
-    it('should not store the profile if it is not dirty', async () => {
+    it('should not store the profile if it is not dirty', () => {
       profileProvider.profile.dirty = false;
-      await profileProvider
+      storeProfileSpy.and.returnValue(Promise.resolve());
+      profileProvider
         .storeProfileIfDirty()
         .then(() => {
-          expect().nothing();
+          expect(storeProfileSpy).not.toHaveBeenCalled();
         })
         .catch(err => {
           expect(err).not.toBeDefined();
@@ -679,10 +652,7 @@ describe('Profile Provider', () => {
 
   describe('createProfile', () => {
     it('should call storeNewProfile function with the new profile', () => {
-      const storeNewProfileSpy = spyOn(
-        PersistenceProviderMock.prototype,
-        'storeNewProfile'
-      );
+      const storeNewProfileSpy = spyOn(persistenceProvider, 'storeNewProfile');
 
       profileProvider.createProfile();
 
@@ -690,22 +660,89 @@ describe('Profile Provider', () => {
     });
   });
 
-  describe('bindProfile', () => {
-    it('should work without errors if disclaimerAccepted', async () => {
-      const profile = {
-        credentials: [
-          profileProvider.wallet.id1.credentials,
-          profileProvider.wallet.id2.credentials
-        ]
-      };
+  describe('loadAndBindProfile', () => {
+    let getProfileSpy, storeProfileSpy;
+    beforeEach(() => {
+      getProfileSpy = spyOn(persistenceProvider, 'getProfile');
+      storeProfileSpy = spyOn(
+        persistenceProvider,
+        'storeProfile'
+      ).and.returnValue(Promise.resolve());
+      spyOn(keyProvider, 'addKeys').and.returnValue(Promise.resolve());
+
+      profileProvider.profile.credentials = [
+        profileProvider.wallet.id1.credentials,
+        profileProvider.wallet.id2.credentials
+      ];
+
+      profileProvider.profile.dirty = true;
 
       spyOn(configProvider, 'get').and.returnValue({ bwsFor: 'id1' });
       profileProvider.profile.disclaimerAccepted = true;
+    });
+    it('should get, bind and return profile with migrated credentials and keys', () => {
+      getProfileSpy.and.returnValue(Promise.resolve(profileProvider.profile));
 
-      await profileProvider
-        .bindProfile(profile)
-        .then(() => {
-          expect().nothing();
+      profileProvider
+        .loadAndBindProfile()
+        .then(profile => {
+          expect(profile).toBeDefined();
+          expect(storeProfileSpy).toHaveBeenCalledWith(profileProvider.profile);
+        })
+        .catch(err => {
+          expect(err).not.toBeDefined();
+        });
+    });
+
+    it('should get, bind and return profile with migrated credentials', () => {
+      BwcProviderMock.prototype.upgradeMultipleCredentialsV1 = (
+        _oldCredentials: any
+      ) => {
+        const migrated = {
+          credentials: [
+            {
+              walletId: 'id1',
+              keyId: 'keyId1',
+              m: 1,
+              n: 1
+            }
+          ],
+          keys: []
+        };
+        return migrated;
+      };
+
+      getProfileSpy.and.returnValue(Promise.resolve(profileProvider.profile));
+
+      profileProvider
+        .loadAndBindProfile()
+        .then(profile => {
+          expect(profile).toBeDefined();
+          expect(storeProfileSpy).toHaveBeenCalledWith(profileProvider.profile);
+        })
+        .catch(err => {
+          expect(err).not.toBeDefined();
+        });
+    });
+
+    it('should get, bind and return profile without migrated credentials or keys', () => {
+      BwcProviderMock.prototype.upgradeMultipleCredentialsV1 = (
+        _oldCredentials: any
+      ) => {
+        const migrated = {
+          credentials: [],
+          keys: []
+        };
+        return migrated;
+      };
+
+      getProfileSpy.and.returnValue(Promise.resolve(profileProvider.profile));
+
+      profileProvider
+        .loadAndBindProfile()
+        .then(profile => {
+          expect(profile).toBeDefined();
+          expect(storeProfileSpy).toHaveBeenCalledWith(profileProvider.profile);
         })
         .catch(err => {
           expect(err).not.toBeDefined();
@@ -727,8 +764,12 @@ describe('Profile Provider', () => {
         });
     });
 
-    it('should set disclaimerAccepted with true', () => {
+    it('should set disclaimerAccepted with true if OLD flag is true', () => {
       profileProvider.profile.disclaimerAccepted = false;
+
+      spyOn(persistenceProvider, 'getCopayDisclaimerFlag').and.returnValue(
+        Promise.resolve(true)
+      );
 
       profileProvider
         .isDisclaimerAccepted()
@@ -739,44 +780,29 @@ describe('Profile Provider', () => {
           expect(err).not.toBeDefined();
         });
     });
-  });
 
-  describe('loadAndBindProfile', () => {
-    it('should get, bind and return profile', () => {
-      const bindProfileSpy = spyOn(
-        profileProvider,
-        'bindProfile'
-      ).and.returnValue(Promise.resolve());
+    it('should not set disclaimerAccepted if OLD flag is not present', () => {
+      profileProvider.profile.disclaimerAccepted = false;
 
-      profileProvider
-        .loadAndBindProfile()
-        .then(profile => {
-          expect(profile).toBeDefined();
-          expect(bindProfileSpy).toHaveBeenCalledWith(profile);
-        })
-        .catch(err => {
-          expect(err).not.toBeDefined();
-        });
-    });
-
-    it('should return error if bindProfile fails', () => {
-      spyOn(profileProvider, 'bindProfile').and.returnValue(
-        Promise.reject('Error')
+      spyOn(persistenceProvider, 'getCopayDisclaimerFlag').and.returnValue(
+        Promise.resolve(null)
       );
 
-      profileProvider
-        .loadAndBindProfile()
-        .then(profile => {
-          expect(profile).not.toBeDefined();
-        })
-        .catch(err => {
-          expect(err).toBeDefined();
-        });
+      profileProvider.isDisclaimerAccepted().catch(() => {
+        expect(profileProvider.profile.disclaimerAccepted).toBeFalsy();
+      });
     });
   });
 
   describe('createWallet', () => {
-    it('should create wallet using seedFromMnemonic', () => {
+    let handleEncryptedWalletSpy;
+    beforeEach(() => {
+      handleEncryptedWalletSpy = spyOn(keyProvider, 'handleEncryptedWallet');
+      handleEncryptedWalletSpy.and.returnValue(Promise.resolve());
+      spyOn(keyProvider, 'addKey').and.returnValue(Promise.resolve());
+      configProvider.set({ bwsFor: 'id1' });
+    });
+    it('should create wallet using seed from mnemonic', () => {
       const opts = {
         name: 'walletName',
         m: 1,
@@ -800,7 +826,7 @@ describe('Profile Provider', () => {
         });
     });
 
-    it('should create wallet using seedFromExtendedPrivateKey', () => {
+    it('should create wallet using seed from extendedPrivateKey', () => {
       const opts = {
         name: 'walletName',
         m: 1,
@@ -824,7 +850,7 @@ describe('Profile Provider', () => {
         });
     });
 
-    it('should create wallet using seedFromExtendedPublicKey', () => {
+    it('should create wallet using seed from extendedPublicKey', () => {
       const opts = {
         name: 'walletName',
         m: 1,
@@ -848,7 +874,7 @@ describe('Profile Provider', () => {
         });
     });
 
-    it('should create wallet using FromRandomWithMnemonic', () => {
+    it('should create wallet using from random mnemonic', () => {
       const opts = {
         name: 'walletName',
         m: 1,
@@ -888,7 +914,7 @@ describe('Profile Provider', () => {
       spyOn(profileProvider.profile, 'hasWallet').and.returnValue(false);
     });
 
-    it('should join wallet and publish "Local/WalletListChange" event', async () => {
+    it('should join wallet and publish "Local/WalletUpdate" event', async () => {
       const opts = {
         secret: 'secret5',
         coin: 'btc',
@@ -903,7 +929,9 @@ describe('Profile Provider', () => {
         .catch(err => {
           expect(err).not.toBeDefined();
         });
-      expect(eventsPublishSpy).toHaveBeenCalledWith('Local/WalletListChange');
+      expect(eventsPublishSpy).toHaveBeenCalledWith('Local/WalletUpdate', {
+        walletId: 'id1'
+      });
     });
 
     it('should fails to join wallet if you already joined that wallet', async () => {
@@ -986,8 +1014,6 @@ describe('Profile Provider', () => {
         .catch(err => {
           expect(err).not.toBeDefined();
         });
-
-      expect(eventsPublishSpy).toHaveBeenCalledWith('Local/WalletListChange');
     });
   });
 
@@ -1005,16 +1031,64 @@ describe('Profile Provider', () => {
   });
 
   describe('setLastKnownBalance', () => {
+    beforeEach(() => {
+      spyOn(persistenceProvider, 'getLastKnownBalance').and.callFake(
+        (_id: string) => {
+          let lastKnownBalance;
+          switch (_id) {
+            case 'id1':
+              lastKnownBalance = {
+                balance: '10.00 BTC',
+                updatedOn: 1558382053803
+              };
+              break;
+
+            case 'id2':
+              lastKnownBalance = {
+                balance: '5.00 BCH',
+                updatedOn: 1558382068661
+              };
+              break;
+            default:
+              lastKnownBalance = {
+                balance: '0.00 BTC',
+                updatedOn: Date.now()
+              };
+              break;
+          }
+          return Promise.resolve(lastKnownBalance);
+        }
+      );
+    });
     it('should set the last known balance', () => {
       profileProvider.setLastKnownBalance();
-      expect(profileProvider.wallet.id1.lastKnownBalance).toBeDefined();
+      expect(profileProvider.wallet.id1.lastKnownBalance).toEqual('10.00 BTC');
+      expect(profileProvider.wallet.id2.lastKnownBalance).toEqual('5.00 BCH');
     });
   });
 
   describe('getWallets', () => {
+    beforeEach(() => {
+      profileProvider.walletsGroups = {
+        keyId1: {
+          name: 'name1',
+          needsBackup: true,
+          order: 1
+        },
+        keyId2: {
+          name: 'name2',
+          needsBackup: true,
+          order: 2
+        }
+      };
+    });
     it('should get successfully all wallets when no opts', () => {
       const wallets = profileProvider.getWallets();
-      expect(wallets).toEqual(_.values(profileProvider.wallet));
+      expect(wallets).toEqual([
+        profileProvider.wallet.id1,
+        profileProvider.wallet.id3,
+        profileProvider.wallet.id2
+      ]);
     });
 
     it('should get successfully all wallets when opts are provided', () => {
@@ -1029,6 +1103,27 @@ describe('Profile Provider', () => {
       };
       const wallets = profileProvider.getWallets(opts);
       expect(wallets).toEqual([profileProvider.wallet.id3]);
+    });
+
+    it('should get all the wallets that match the array of coins', () => {
+      const opts = {
+        coin: ['btc', 'bch'],
+        network: 'livenet'
+      };
+      const wallets = profileProvider.getWallets(opts);
+      expect(wallets).toEqual([
+        profileProvider.wallet.id1,
+        profileProvider.wallet.id2
+      ]);
+    });
+
+    it('should get all the backed up wallets', () => {
+      walletMock['id3'].needsBackup = true;
+      const opts = {
+        backedUp: true
+      };
+      const wallets = profileProvider.getWallets(opts);
+      expect(wallets).toEqual([profileProvider.wallet.id1]);
     });
 
     it('should not return any wallet when there is no wallets validating provided opts', () => {
@@ -1055,6 +1150,19 @@ describe('Profile Provider', () => {
 
   describe('getTxps', () => {
     it('should get all txps', () => {
+      profileProvider.walletsGroups = {
+        keyId1: {
+          name: 'name1',
+          needsBackup: true,
+          order: 1
+        },
+        keyId2: {
+          name: 'name2',
+          needsBackup: true,
+          order: 2
+        }
+      };
+
       const opts = {};
       profileProvider
         .getTxps(opts)
@@ -1104,7 +1212,8 @@ describe('Profile Provider', () => {
 
       spyOn(configProvider, 'get').and.returnValue({
         bwsFor: 'id1',
-        desktopNotificationsEnabled: true
+        desktopNotifications: { enabled: true },
+        emailNotifications: { email: 'test@test.com' }
       });
 
       spyOn(actionSheetProvider, 'createInfoSheet').and.returnValue({
@@ -1261,5 +1370,34 @@ describe('Profile Provider', () => {
       expect(replaceSpy).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('hasWalletWithFunds', () => {
+    beforeAll(async () => {
+      spyOn(RateProvider.prototype, 'getCoin').and.callFake(
+        () => new Promise(resolve => resolve([{ code: 'BOB', rate: 123 }]))
+      );
+    });
+
+    beforeEach(() => {
+      profileProvider.wallet = _.clone(walletMock);
+    });
+
+    it('should return true with multiple wallets', () => {
+      // The all wallets have more than 10 BOB worth of btc.
+      const res = profileProvider.hasWalletWithFunds(10, 'BOB');
+      expect(res).toEqual(true);
+    });
+
+    it('should return true just barely', () => {
+      // The wallet w/ 10 btc should equate to 123 * 10 bob, which would result in this returning true
+      const res = profileProvider.hasWalletWithFunds(1230, 'BOB');
+      expect(res).toEqual(true);
+    });
+
+    it('should return false', () => {
+      // The wallet w/ 10 btc is the biggest wallet. So no wallets are able to pay 1231 BOB.
+      const res = profileProvider.hasWalletWithFunds(1231, 'BOB');
+      expect(res).toEqual(false);
+    });
+  });
 });
- */

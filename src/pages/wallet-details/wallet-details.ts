@@ -1,46 +1,58 @@
 import { Component, NgZone } from '@angular/core';
+import { SocialSharing } from '@ionic-native/social-sharing';
 import { TranslateService } from '@ngx-translate/core';
 import {
   Events,
   ModalController,
   NavController,
   NavParams,
-  Platform
+  Platform,
+  ViewController
 } from 'ionic-angular';
 import * as _ from 'lodash';
+import * as moment from 'moment';
 import { Subscription } from 'rxjs';
 
 // providers
 import { AddressBookProvider } from '../../providers/address-book/address-book';
+import { BwcErrorProvider } from '../../providers/bwc-error/bwc-error';
+import { CurrencyProvider } from '../../providers/currency/currency';
+import { ErrorsProvider } from '../../providers/errors/errors';
 import { ExternalLinkProvider } from '../../providers/external-link/external-link';
 import { GiftCardProvider } from '../../providers/gift-card/gift-card';
 import { CardConfigMap } from '../../providers/gift-card/gift-card.types';
 import { ActionSheetProvider } from '../../providers/index';
 import { Logger } from '../../providers/logger/logger';
 import { OnGoingProcessProvider } from '../../providers/on-going-process/on-going-process';
+import { PlatformProvider } from '../../providers/platform/platform';
 import { ProfileProvider } from '../../providers/profile/profile';
+import { ThemeProvider } from '../../providers/theme/theme';
 import { TimeProvider } from '../../providers/time/time';
 import { WalletProvider } from '../../providers/wallet/wallet';
 
 // pages
 import { BackupKeyPage } from '../../pages/backup/backup-key/backup-key';
-import { ProposalsPage } from '../../pages/home/proposals/proposals';
+import { SendPage } from '../../pages/send/send';
 import { WalletAddressesPage } from '../../pages/settings/wallet-settings/wallet-settings-advanced/wallet-addresses/wallet-addresses';
-import { TxDetailsPage } from '../../pages/tx-details/tx-details';
-import { WalletTabsChild } from '../wallet-tabs/wallet-tabs-child';
-import { WalletTabsProvider } from '../wallet-tabs/wallet-tabs.provider';
+import { TxDetailsModal } from '../../pages/tx-details/tx-details';
+import { ProposalsNotificationsPage } from '../../pages/wallets/proposals-notifications/proposals-notifications';
+import { AmountPage } from '../send/amount/amount';
 import { SearchTxModalPage } from './search-tx-modal/search-tx-modal';
-import { WalletBalancePage } from './wallet-balance/wallet-balance';
+import { WalletBalanceModal } from './wallet-balance/wallet-balance';
 
 const HISTORY_SHOW_LIMIT = 10;
 const MIN_UPDATE_TIME = 2000;
 const TIMEOUT_FOR_REFRESHER = 1000;
-
+interface UpdateWalletOptsI {
+  walletId: string;
+  force?: boolean;
+  alsoUpdateHistory?: boolean;
+}
 @Component({
   selector: 'page-wallet-details',
   templateUrl: 'wallet-details.html'
 })
-export class WalletDetailsPage extends WalletTabsChild {
+export class WalletDetailsPage {
   private currentPage: number = 0;
   private showBackupNeededMsg: boolean = true;
   private onResumeSubscription: Subscription;
@@ -64,13 +76,15 @@ export class WalletDetailsPage extends WalletTabsChild {
   public txps = [];
   public txpsPending: any[];
   public lowUtxosWarning: boolean;
+  public associatedWallet: string;
+  public backgroundColor: string;
+  private isCordova: boolean;
 
   public supportedCards: Promise<CardConfigMap>;
-
   constructor(
-    navCtrl: NavController,
+    private currencyProvider: CurrencyProvider,
     private navParams: NavParams,
-    profileProvider: ProfileProvider,
+    private navCtrl: NavController,
     private walletProvider: WalletProvider,
     private addressbookProvider: AddressBookProvider,
     private events: Events,
@@ -81,24 +95,35 @@ export class WalletDetailsPage extends WalletTabsChild {
     private modalCtrl: ModalController,
     private onGoingProcessProvider: OnGoingProcessProvider,
     private externalLinkProvider: ExternalLinkProvider,
-    walletTabsProvider: WalletTabsProvider,
     private actionSheetProvider: ActionSheetProvider,
-    private platform: Platform
+    private platform: Platform,
+    private profileProvider: ProfileProvider,
+    private viewCtrl: ViewController,
+    private platformProvider: PlatformProvider,
+    private socialSharing: SocialSharing,
+    private bwcErrorProvider: BwcErrorProvider,
+    private errorsProvider: ErrorsProvider,
+    private themeProvider: ThemeProvider
   ) {
-    super(navCtrl, profileProvider, walletTabsProvider);
     this.zone = new NgZone({ enableLongStackTrace: false });
-  }
+    this.isCordova = this.platformProvider.isCordova;
 
-  ionViewDidLoad() {
+    this.wallet = this.profileProvider.getWallet(this.navParams.data.walletId);
+    this.supportedCards = this.giftCardProvider.getSupportedCardMap();
+
     // Getting info from cache
     if (this.navParams.data.clearCache) {
       this.clearHistoryCache();
     } else {
       if (this.wallet.completeHistory) this.showHistory();
+      else
+        this.fetchTxHistory({
+          walletId: this.wallet.credentials.walletId,
+          force: true
+        });
     }
 
     this.requiresMultipleSignatures = this.wallet.credentials.m > 1;
-    this.supportedCards = this.giftCardProvider.getSupportedCardMap();
 
     this.addressbookProvider
       .list()
@@ -115,27 +140,20 @@ export class WalletDetailsPage extends WalletTabsChild {
     this.events.subscribe('Local/WalletHistoryUpdate', this.updateHistory);
   }
 
-  // Event handling
-  ionViewWillLoad() {
-    this.subscribeEvents();
-  }
-
   ionViewWillEnter() {
+    this.backgroundColor = this.themeProvider.getThemeInfo().walletDetailsBackgroundStart;
     this.onResumeSubscription = this.platform.resume.subscribe(() => {
       this.profileProvider.setFastRefresh(this.wallet);
       this.subscribeEvents();
     });
-  }
-
-  // Start by firing a walletFocus event.
-  ionViewDidEnter() {
     this.profileProvider.setFastRefresh(this.wallet);
     this.events.publish('Local/WalletFocus', {
       walletId: this.wallet.credentials.walletId
     });
+    this.subscribeEvents();
   }
 
-  ionViewWillUnload() {
+  ionViewWillLeave() {
     this.profileProvider.setSlowRefresh(this.wallet);
     this.events.unsubscribe('Local/WalletUpdate', this.updateStatus);
     this.events.unsubscribe('Local/WalletHistoryUpdate', this.updateHistory);
@@ -153,6 +171,51 @@ export class WalletDetailsPage extends WalletTabsChild {
       !this.updateStatusError &&
       !this.updateTxHistoryError
     );
+  }
+
+  private fetchTxHistory(opts: UpdateWalletOptsI) {
+    if (!opts.walletId) {
+      this.logger.error('Error no walletId in update History');
+      return;
+    }
+
+    const progressFn = ((_, newTxs) => {
+      let args = {
+        walletId: opts.walletId,
+        finished: false,
+        progress: newTxs
+      };
+      this.events.publish('Local/WalletHistoryUpdate', args);
+    }).bind(this);
+
+    // Fire a startup event, to allow UI to show the spinner
+    this.events.publish('Local/WalletHistoryUpdate', {
+      walletId: opts.walletId,
+      finished: false
+    });
+    this.walletProvider
+      .fetchTxHistory(this.wallet, progressFn, opts)
+      .then(txHistory => {
+        this.wallet.completeHistory = txHistory;
+        this.events.publish('Local/WalletHistoryUpdate', {
+          walletId: opts.walletId,
+          finished: true
+        });
+      })
+      .catch(err => {
+        if (err != 'HISTORY_IN_PROGRESS') {
+          this.logger.warn('WalletHistoryUpdate ERROR', err);
+          this.events.publish('Local/WalletHistoryUpdate', {
+            walletId: opts.walletId,
+            finished: false,
+            error: err
+          });
+        }
+      });
+  }
+
+  public isUtxoCoin(): boolean {
+    return this.currencyProvider.isUtxoCoin(this.wallet.coin);
   }
 
   private clearHistoryCache() {
@@ -202,8 +265,8 @@ export class WalletDetailsPage extends WalletTabsChild {
     });
   }
 
-  public openProposalsPage(): void {
-    this.navCtrl.push(ProposalsPage, { walletId: this.wallet.id });
+  public openProposalsNotificationsPage(): void {
+    this.navCtrl.push(ProposalsNotificationsPage, { walletId: this.wallet.id });
   }
 
   private updateAll = _.debounce(
@@ -318,7 +381,18 @@ export class WalletDetailsPage extends WalletTabsChild {
       let status = this.wallet.cachedStatus;
       this.setPendingTxps(status.pendingTxps);
       this.showBalanceButton = status.totalBalanceSat != status.spendableAmount;
-      this.analyzeUtxos();
+
+      const minXrpBalance = 20000000; // 20 XRP * 1e6
+      if (this.wallet.coin === 'xrp') {
+        this.showBalanceButton =
+          status.totalBalanceSat &&
+          status.totalBalanceSat != status.spendableAmount + minXrpBalance;
+      }
+
+      if (this.isUtxoCoin()) {
+        this.analyzeUtxos();
+      }
+
       this.updateStatusError = null;
       this.walletNotRegistered = false;
     } else {
@@ -354,11 +428,60 @@ export class WalletDetailsPage extends WalletTabsChild {
       });
   }
 
+  public itemTapped(tx) {
+    if (tx.hasUnconfirmedInputs) {
+      const infoSheet = this.actionSheetProvider.createInfoSheet(
+        'unconfirmed-inputs'
+      );
+      infoSheet.present();
+      infoSheet.onDidDismiss(() => {
+        this.goToTxDetails(tx);
+      });
+    } else if (tx.isRBF) {
+      const infoSheet = this.actionSheetProvider.createInfoSheet('rbf-tx');
+      infoSheet.present();
+      infoSheet.onDidDismiss(option => {
+        option ? this.speedUpTx(tx) : this.goToTxDetails(tx);
+      });
+    } else if (this.canSpeedUpTx(tx)) {
+      const infoSheet = this.actionSheetProvider.createInfoSheet('speed-up-tx');
+      infoSheet.present();
+      infoSheet.onDidDismiss(option => {
+        option ? this.speedUpTx(tx) : this.goToTxDetails(tx);
+      });
+    } else {
+      this.goToTxDetails(tx);
+    }
+  }
+
+  private speedUpTx(tx) {
+    this.walletProvider.getAddress(this.wallet, false).then(addr => {
+      const data = {
+        amount: 0,
+        network: this.wallet.network,
+        coin: this.wallet.coin,
+        speedUpTx: true,
+        toAddress: addr,
+        walletId: this.wallet.credentials.walletId,
+        fromWalletDetails: true,
+        txid: tx.txid,
+        recipientType: 'wallet',
+        name: this.wallet.name
+      };
+      const nextView = {
+        name: 'ConfirmPage',
+        params: data
+      };
+      this.events.publish('IncomingDataRedir', nextView);
+    });
+  }
+
   public goToTxDetails(tx) {
-    this.navCtrl.push(TxDetailsPage, {
+    const txDetailModal = this.modalCtrl.create(TxDetailsModal, {
       walletId: this.wallet.credentials.walletId,
       txid: tx.txid
     });
+    txDetailModal.present();
   }
 
   public openBackupModal(): void {
@@ -421,10 +544,25 @@ export class WalletDetailsPage extends WalletTabsChild {
     return !tx.confirmations || tx.confirmations === 0;
   }
 
+  public canSpeedUpTx(tx): boolean {
+    if (this.wallet.coin !== 'btc') return false;
+
+    const currentTime = moment();
+    const txTime = moment(tx.time * 1000);
+
+    // Can speed up the tx after 4 hours without confirming
+    return (
+      currentTime.diff(txTime, 'hours') >= 4 &&
+      this.isUnconfirmed(tx) &&
+      tx.action === 'received'
+    );
+  }
+
   public openBalanceDetails(): void {
-    this.navCtrl.push(WalletBalancePage, {
+    let walletBalanceModal = this.modalCtrl.create(WalletBalanceModal, {
       status: this.wallet.cachedStatus
     });
+    walletBalanceModal.present();
   }
 
   public back(): void {
@@ -444,10 +582,7 @@ export class WalletDetailsPage extends WalletTabsChild {
     modal.present();
     modal.onDidDismiss(data => {
       if (!data || !data.txid) return;
-      this.navCtrl.push(TxDetailsPage, {
-        walletId: this.wallet.credentials.walletId,
-        txid: data.txid
-      });
+      this.goToTxDetails(data);
     });
   }
 
@@ -475,5 +610,79 @@ export class WalletDetailsPage extends WalletTabsChild {
     setTimeout(() => {
       refresher.complete();
     }, TIMEOUT_FOR_REFRESHER);
+  }
+
+  public close() {
+    this.viewCtrl.dismiss();
+  }
+
+  public goToReceivePage() {
+    const params = {
+      wallet: this.wallet
+    };
+    const receive = this.actionSheetProvider.createWalletReceive(params);
+    receive.present();
+    receive.onDidDismiss(data => {
+      if (data === 'goToBackup') this.goToBackup();
+      else if (data) this.showErrorInfoSheet(data);
+    });
+  }
+
+  public goToSendPage() {
+    this.navCtrl.push(SendPage, {
+      wallet: this.wallet
+    });
+  }
+
+  public showMoreOptions(): void {
+    const showRequest =
+      this.wallet && this.wallet.isComplete() && !this.wallet.needsBackup;
+    const showShare = showRequest && this.isCordova;
+    const optionsSheet = this.actionSheetProvider.createOptionsSheet(
+      'wallet-options',
+      { showShare, showRequest }
+    );
+    optionsSheet.present();
+
+    optionsSheet.onDidDismiss(option => {
+      if (option == 'request-amount') this.requestSpecificAmount();
+      if (option == 'share-address') this.shareAddress();
+    });
+  }
+
+  private requestSpecificAmount(): void {
+    this.walletProvider.getAddress(this.wallet, false).then(addr => {
+      this.navCtrl.push(AmountPage, {
+        toAddress: addr,
+        id: this.wallet.credentials.walletId,
+        recipientType: 'wallet',
+        name: this.wallet.name,
+        color: this.wallet.color,
+        coin: this.wallet.coin,
+        nextPage: 'CustomAmountPage',
+        network: this.wallet.network
+      });
+    });
+  }
+
+  private shareAddress(): void {
+    if (!this.isCordova) return;
+    this.walletProvider.getAddress(this.wallet, false).then(addr => {
+      this.socialSharing.share(addr);
+    });
+  }
+
+  public showErrorInfoSheet(error: Error | string): void {
+    const infoSheetTitle = this.translate.instant('Error');
+    this.errorsProvider.showDefaultError(
+      this.bwcErrorProvider.msg(error),
+      infoSheetTitle
+    );
+  }
+
+  public goToBackup(): void {
+    this.navCtrl.push(BackupKeyPage, {
+      keyId: this.wallet.credentials.keyId
+    });
   }
 }

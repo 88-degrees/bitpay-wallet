@@ -5,27 +5,22 @@ import * as _ from 'lodash';
 import { Logger } from '../../../../../providers/logger/logger';
 
 // Providers
-import { AppProvider } from '../../../../../providers/app/app';
 import { BwcErrorProvider } from '../../../../../providers/bwc-error/bwc-error';
 import { ConfigProvider } from '../../../../../providers/config/config';
+import { Coin } from '../../../../../providers/currency/currency';
 import { DerivationPathHelperProvider } from '../../../../../providers/derivation-path-helper/derivation-path-helper';
+import { ErrorsProvider } from '../../../../../providers/errors/errors';
 import { ExternalLinkProvider } from '../../../../../providers/external-link/external-link';
 import { OnGoingProcessProvider } from '../../../../../providers/on-going-process/on-going-process';
-import { PopupProvider } from '../../../../../providers/popup/popup';
 import { ProfileProvider } from '../../../../../providers/profile/profile';
 import { PushNotificationsProvider } from '../../../../../providers/push-notifications/push-notifications';
-import { ReplaceParametersProvider } from '../../../../../providers/replace-parameters/replace-parameters';
-import { TxFormatProvider } from '../../../../../providers/tx-format/tx-format';
-import { Coin, WalletProvider } from '../../../../../providers/wallet/wallet';
-import { WalletTabsChild } from '../../../../wallet-tabs/wallet-tabs-child';
-import { WalletTabsProvider } from '../../../../wallet-tabs/wallet-tabs.provider';
+import { WalletProvider } from '../../../../../providers/wallet/wallet';
 
 @Component({
   selector: 'page-wallet-duplicate',
   templateUrl: 'wallet-duplicate.html'
 })
-export class WalletDuplicatePage extends WalletTabsChild {
-  comment: any;
+export class WalletDuplicatePage {
   defaults: any;
 
   public availableWallet;
@@ -35,10 +30,7 @@ export class WalletDuplicatePage extends WalletTabsChild {
 
   constructor(
     private walletProvider: WalletProvider,
-    private app: AppProvider,
-    private txFormatProvider: TxFormatProvider,
     private onGoingProcessProvider: OnGoingProcessProvider,
-    private popupProvider: PopupProvider,
     private pushNotificationsProvider: PushNotificationsProvider,
     private externalLinkProvider: ExternalLinkProvider,
     private bwcErrorProvider: BwcErrorProvider,
@@ -47,29 +39,20 @@ export class WalletDuplicatePage extends WalletTabsChild {
     private events: Events,
     private navParams: NavParams,
     private configProvider: ConfigProvider,
-    private replaceParametersProvider: ReplaceParametersProvider,
     public navCtrl: NavController,
     public profileProvider: ProfileProvider,
-    public walletTabsProvider: WalletTabsProvider,
-    public derivationPathHelperProvider: DerivationPathHelperProvider
+    public derivationPathHelperProvider: DerivationPathHelperProvider,
+    private errorsProvider: ErrorsProvider
   ) {
-    super(navCtrl, profileProvider, walletTabsProvider);
     this.defaults = this.configProvider.getDefaults();
   }
 
   ionViewWillEnter() {
-    const appName = this.app.info.nameCase;
+    this.wallet = this.profileProvider.getWallet(this.navParams.data.walletId);
     const derivationStrategy = this.derivationPathHelperProvider.getDerivationStrategy(
       this.wallet.credentials.rootPath
     );
-    this.comment = this.replaceParametersProvider.replace(
-      this.translate.instant(
-        'To recover BCH from your {{appName}} Wallet, you must duplicate your BTC wallet. We strongly recommend you protect your wallets with a password to keep your funds safe.'
-      ),
-      { appName }
-    );
 
-    this.wallet = this.profileProvider.getWallet(this.navParams.data.walletId);
     // Filter out already duplicated wallets
     let walletsBCH = this.profileProvider.getWallets({
       coin: 'bch',
@@ -105,29 +88,15 @@ export class WalletDuplicatePage extends WalletTabsChild {
     }
 
     if (!this.availableWallet) return;
-
-    this.walletProvider
-      .getBalance(this.availableWallet, { coin: 'bch' })
-      .then(balance => {
-        this.availableWallet.bchBalance = this.txFormatProvider.formatAmountStr(
-          'bch',
-          balance.availableAmount
-        );
-        this.availableWallet.error = null;
-      })
-      .catch(err => {
-        this.availableWallet.error =
-          err === 'WALLET_NOT_REGISTERED'
-            ? this.translate.instant('Wallet not registered')
-            : this.bwcErrorProvider.msg(err);
-        this.logger.error(err);
-      });
   }
 
   private setErr(err) {
     const errorMsg = this.bwcErrorProvider.msg(err, 'Could not duplicate');
     this.logger.warn('Duplicate BCH', errorMsg);
-    this.popupProvider.ionicAlert(errorMsg, null, 'OK');
+    this.errorsProvider.showDefaultError(
+      errorMsg,
+      this.translate.instant('Error')
+    );
     return;
   }
 
@@ -137,7 +106,9 @@ export class WalletDuplicatePage extends WalletTabsChild {
     );
 
     let opts: any = {
-      name: wallet.name + '[BCH]',
+      useLegacyCoinType: true,
+      useLegacyPurpose: true,
+      name: `${wallet.name} [BCH duplicate]`,
       m: wallet.m,
       n: wallet.n,
       myName: wallet.credentials.copayerName,
@@ -145,14 +116,17 @@ export class WalletDuplicatePage extends WalletTabsChild {
       coin: Coin.BCH,
       walletPrivKey: wallet.credentials.walletPrivKey,
       compliantDerivation: wallet.credentials.compliantDerivation,
-      bwsurl: this.defaults.bws.url
+      bwsurl: this.defaults.bws.url,
+      derivationStrategy: wallet.credentials.derivationStrategy,
+      addressType: wallet.credentials.addressType
     };
 
     this.walletProvider
       .getKeys(wallet)
       .then(keys => {
+        opts.extendedPrivateKey = keys.xPrivKey;
         this.onGoingProcessProvider.set('duplicatingWallet');
-        this.importOrCreate(wallet, keys, opts)
+        this.importOrCreate(wallet, opts)
           .then(result => {
             let newWallet = result.walletBch;
             let isNew = result.isNew;
@@ -171,7 +145,7 @@ export class WalletDuplicatePage extends WalletTabsChild {
                   });
                 }
                 this.events.publish('status:updated');
-                this.close();
+                this.navCtrl.popToRoot();
               })
               .catch(err => {
                 this.onGoingProcessProvider.clear();
@@ -189,7 +163,11 @@ export class WalletDuplicatePage extends WalletTabsChild {
           err.message != 'FINGERPRINT_CANCELLED' &&
           err.message != 'PASSWORD_CANCELLED'
         ) {
-          this.setErr(this.bwcErrorProvider.msg(err));
+          if (err.message == 'WRONG_PASSWORD') {
+            this.errorsProvider.showWrongEncryptPasswordError();
+          } else {
+            this.setErr(this.bwcErrorProvider.msg(err));
+          }
         }
       });
   }
@@ -207,7 +185,6 @@ export class WalletDuplicatePage extends WalletTabsChild {
 
   private importOrCreate(
     wallet,
-    keys,
     opts
   ): Promise<{
     walletBch: any;
@@ -217,28 +194,15 @@ export class WalletDuplicatePage extends WalletTabsChild {
       opts.singleAddress = status.wallet.singleAddress;
       // first try to import
       return this.profileProvider
-        .importExtendedPrivateKey(keys.xPrivKey, opts)
-        .then(newWallet => {
-          let walletBch;
-
-          newWallet.forEach(wallet => {
-            if (wallet.coin === 'bch') {
-              walletBch = wallet;
-            }
+        .importWithDerivationPath(opts)
+        .then(walletBch => {
+          return Promise.resolve({ walletBch });
+        })
+        .catch(() => {
+          this.logger.warn('Could not import. Trying to create wallet');
+          return this.profileProvider.createWallet(opts).then(walletBch => {
+            return Promise.resolve({ walletBch, isNew: true });
           });
-
-          if (walletBch) {
-            return Promise.resolve({ walletBch });
-          } else {
-            opts.extendedPrivateKey = keys.xPrivKey;
-            opts.useLegacyCoinType = true;
-            const addingNewWallet = false;
-            return this.profileProvider
-              .createWallet(addingNewWallet, opts)
-              .then(walletBch => {
-                return Promise.resolve({ walletBch, isNew: true });
-              });
-          }
         });
     });
   }

@@ -1,15 +1,33 @@
-import { Component, ViewChild } from '@angular/core';
-import { NavController } from 'ionic-angular';
+import { Component, QueryList, ViewChild, ViewChildren } from '@angular/core';
+import { NavController, NavParams, Slides } from 'ionic-angular';
+import * as _ from 'lodash';
 
 import { BuyCardPage } from '../buy-card/buy-card';
 
-import { TranslateService } from '@ngx-translate/core';
-import { ActionSheetProvider, PlatformProvider } from '../../../../providers';
+import { Subject } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
 import {
+  ActionSheetProvider,
+  PlatformProvider,
+  ThemeProvider
+} from '../../../../providers';
+import {
+  DirectoryCategory,
+  DirectoryCuration
+} from '../../../../providers/directory/directory';
+import {
+  getPromo,
   GiftCardProvider,
   hasVisibleDiscount
 } from '../../../../providers/gift-card/gift-card';
 import { CardConfig } from '../../../../providers/gift-card/gift-card.types';
+import {
+  getDiscount,
+  getDiscountTextColor,
+  Merchant,
+  MerchantProvider
+} from '../../../../providers/merchant/merchant';
+import { MerchantPage } from '../../../merchant/merchant';
 import { WideHeaderPage } from '../../../templates/wide-header-page/wide-header-page';
 
 @Component({
@@ -17,66 +35,109 @@ import { WideHeaderPage } from '../../../templates/wide-header-page/wide-header-
   templateUrl: 'card-catalog.html'
 })
 export class CardCatalogPage extends WideHeaderPage {
-  public allCards: CardConfig[];
+  public allMerchants: Merchant[];
+  private giftCardsOnly: boolean = false;
   public searchQuery: string = '';
-  public visibleCards: CardConfig[] = [];
-  public cardConfigMap: { [name: string]: CardConfig };
-
-  public getHeaderFn = this.getHeader.bind(this);
+  public searchQuerySubject: Subject<string> = new Subject<string>();
+  public visibleMerchants: Merchant[] = [];
+  public categories: DirectoryCategory[];
+  public curations: Array<{ displayName: string; slides: Merchant[][] }>;
+  public category: string;
+  public platformProvider: PlatformProvider;
+  getDiscountTextColor = getDiscountTextColor;
 
   @ViewChild(WideHeaderPage)
   wideHeaderPage: WideHeaderPage;
 
+  @ViewChildren(Slides)
+  slides: QueryList<Slides>;
+
+  isCordova: boolean = false;
+
   constructor(
     private actionSheetProvider: ActionSheetProvider,
     public giftCardProvider: GiftCardProvider,
-    platormProvider: PlatformProvider,
+    private merchantProvider: MerchantProvider,
+    platformProvider: PlatformProvider,
     private navCtrl: NavController,
-    private translate: TranslateService
+    private navParams: NavParams,
+    public themeProvider: ThemeProvider
   ) {
-    super(platormProvider);
+    super(platformProvider);
   }
 
   ngOnInit() {
-    this.title = 'Gift Cards';
-  }
+    this.isCordova = this.platformProvider.isCordova;
+    this.category = this.navParams.get('category');
+    this.giftCardsOnly = this.navParams.get('giftCardsOnly');
+    this.title = this.category
+      ? this.category
+      : this.giftCardsOnly
+      ? 'Gift Cards'
+      : 'Shop';
+    this.searchQuerySubject.pipe(debounceTime(300)).subscribe(query => {
+      this.searchQuery = query as string;
+      this.updateCardList();
+    });
 
-  ionViewWillEnter() {
-    this.giftCardProvider
-      .getAvailableCards()
-      .then(allCards => {
-        this.cardConfigMap = allCards
-          .sort((a, b) => (a.featured && !b.featured ? -1 : 1))
-          .reduce(
-            (map, cardConfig) => ({ ...map, [cardConfig.name]: cardConfig }),
-            {}
-          );
-        this.allCards = allCards;
+    this.merchantProvider
+      .getMerchants()
+      .then(async allMerchants => {
+        const merchants = allMerchants.filter(merchant =>
+          this.giftCardsOnly ? merchant.giftCards.length : true
+        );
+        this.allMerchants = merchants;
+        if (merchants.length < 10) {
+          this.category = 'All';
+        }
+        this.categories = getUniqueCategoriesOrCurations<DirectoryCategory>(
+          this.allMerchants,
+          'categories'
+        );
+        this.curations = buildCurations(this.allMerchants);
         this.updateCardList();
       })
       .catch(_ => {
         this.showError();
-        return [] as CardConfig[];
+        return [] as Merchant[];
       });
   }
 
-  onSearch(query: string) {
-    this.searchQuery = query;
-    this.updateCardList();
+  slideChanged(slides: Merchant[][], index: number) {
+    const activeSlideIndex = this.slides.toArray()[index].getActiveIndex();
+    const visibleCards = slides[activeSlideIndex] || [];
+    visibleCards
+      .filter(merchant => merchant.giftCards.length)
+      .map(merchant => merchant.giftCards[0])
+      .filter(cardConfig => hasVisibleDiscount(cardConfig))
+      .forEach(promotedCard =>
+        this.giftCardProvider.logEvent(
+          'presentedWithGiftCardPromo',
+          this.giftCardProvider.getPromoEventParams(
+            promotedCard,
+            'Shop Page Curation'
+          )
+        )
+      );
   }
 
-  getHeader(record, recordIndex, records) {
-    if (record.featured && recordIndex === 0) {
-      return this.translate.instant('Featured Brands');
-    }
-    const prevRecord = records[recordIndex - 1];
-    if (
-      (!record.featured && prevRecord && prevRecord.featured) ||
-      (!record.featured && !prevRecord && this.searchQuery)
-    ) {
-      return this.translate.instant('More Brands');
-    }
-    return null;
+  getDiscount(merchant: Merchant) {
+    return getDiscount(merchant);
+  }
+
+  ionViewDidEnter() {
+    this.logGiftCardCatalogHomeView();
+  }
+
+  onSearch(query: string) {
+    this.searchQuerySubject.next(query);
+  }
+
+  viewCategory(category: string) {
+    this.navCtrl.push(CardCatalogPage, {
+      category,
+      giftCardsOnly: this.giftCardsOnly
+    });
   }
 
   trackBy(record) {
@@ -84,27 +145,61 @@ export class CardCatalogPage extends WideHeaderPage {
   }
 
   updateCardList() {
-    this.visibleCards = this.allCards.filter(c =>
-      isCardInSearchResults(c, this.searchQuery)
-    );
+    this.visibleMerchants = this.allMerchants
+      .filter(merchant => isMerchantInSearchResults(merchant, this.searchQuery))
+      .filter(
+        merchant =>
+          !this.category ||
+          this.category === 'All' ||
+          [
+            ...merchant.categories.map(category => category.displayName),
+            ...merchant.curations.map(curation => curation.displayName)
+          ].includes(this.category)
+      );
+  }
+
+  viewMerchant(merchant: Merchant) {
+    return merchant.hasDirectIntegration
+      ? this.navCtrl.push(MerchantPage, { merchant })
+      : this.buyCard(merchant.giftCards[0]);
   }
 
   buyCard(cardConfig: CardConfig) {
+    this.logGiftCardBrandView(cardConfig);
+
     this.navCtrl.push(BuyCardPage, { cardConfig });
-    if (this.hasPercentageDiscount(cardConfig)) {
-      this.logDiscountClick(cardConfig);
+    if (!!getPromo(cardConfig)) {
+      this.logPromoClick(cardConfig);
     }
   }
 
-  logDiscountClick(cardConfig: CardConfig) {
-    this.giftCardProvider.logEvent(
-      'clickedGiftCardDiscount',
-      this.giftCardProvider.getDiscountEventParams(cardConfig, 'Gift Card List')
-    );
+  logGiftCardCatalogHomeView() {
+    this.giftCardProvider.logEvent('giftcards_view_home', {});
   }
 
-  hasPercentageDiscount(cardConfig: CardConfig) {
-    return hasVisibleDiscount(cardConfig);
+  logGiftCardBrandView(cardConfig: CardConfig) {
+    this.giftCardProvider.logEvent('giftcards_view_brand', {
+      brand: cardConfig.name
+    });
+
+    this.giftCardProvider.logEvent('view_item', {
+      items: [
+        {
+          brand: cardConfig.name,
+          category: 'giftCards'
+        }
+      ]
+    });
+  }
+
+  logPromoClick(cardConfig: CardConfig) {
+    this.giftCardProvider.logEvent(
+      'clickedGiftCardPromo',
+      this.giftCardProvider.getPromoEventParams(
+        cardConfig,
+        this.category ? 'Gift Card List' : 'Shop Page Curation'
+      )
+    );
   }
 
   private showError() {
@@ -116,13 +211,63 @@ export class CardCatalogPage extends WideHeaderPage {
   }
 }
 
-export function isCardInSearchResults(c: CardConfig, search: string = '') {
-  const cardName = c.name.toLowerCase();
+function buildCurations(merchants: Merchant[]) {
+  const uniqueCurations = getUniqueCategoriesOrCurations<DirectoryCuration>(
+    merchants,
+    'curations'
+  );
+  return uniqueCurations.map(curation => ({
+    displayName: curation.displayName,
+    slides: merchants
+      .filter(merchant =>
+        merchant.curations
+          .map(merchantCuration => merchantCuration.displayName)
+          .includes(curation.displayName)
+      )
+      .sort(
+        (a, b) =>
+          a.curations.find(c => c.displayName === curation.displayName)
+            .merchantIndex -
+          b.curations.find(c => c.displayName === curation.displayName)
+            .merchantIndex
+      )
+      .reduce((all, one, i) => {
+        const ch = Math.floor(i / 3);
+        all[ch] = [].concat(all[ch] || [], one);
+        return all;
+      }, [])
+  }));
+}
+
+export function isMerchantInSearchResults(m: Merchant, search: string = '') {
+  const merchantName = (m.displayName || m.name).toLowerCase();
   const query = search.toLowerCase();
-  const matchableText = [cardName, stripPunctuation(cardName)];
-  return search && matchableText.some(text => text.indexOf(query) > -1);
+  const matchableText = [
+    merchantName,
+    stripPunctuation(merchantName),
+    ...m.tags
+  ];
+  return !search || matchableText.some(text => text.indexOf(query) > -1);
 }
 
 export function stripPunctuation(text: string) {
   return text.replace(/[^\w\s]|_/g, '');
+}
+
+function getUniqueCategoriesOrCurations<
+  T extends DirectoryCategory | DirectoryCuration
+>(merchants: Merchant[], field: 'curations' | 'categories'): T[] {
+  return (_.uniqBy(
+    merchants
+      .filter(merchant => merchant[field].length)
+      .map(merchant => merchant[field])
+      .reduce(
+        (allCurations, merchantCurations) => [
+          ...allCurations,
+          ...merchantCurations
+        ],
+        []
+      ),
+    categoryOrCuration => categoryOrCuration.displayName
+  ) as T[]).sort((a, b) => a.index - b.index);
 }

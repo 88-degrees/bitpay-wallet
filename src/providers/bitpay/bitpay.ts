@@ -17,11 +17,15 @@ export class BitPayProvider {
     private logger: Logger
   ) {
     this.logger.debug('BitPayProvider initialized');
-    this.NETWORK = 'livenet';
+  }
+
+  public setNetwork(network: string) {
+    this.NETWORK = network;
     this.BITPAY_API_URL =
       this.NETWORK == 'livenet'
         ? 'https://bitpay.com'
         : 'https://test.bitpay.com';
+    this.logger.log(`bitpay provider initialized with ${this.NETWORK}`);
   }
 
   public getEnvironment() {

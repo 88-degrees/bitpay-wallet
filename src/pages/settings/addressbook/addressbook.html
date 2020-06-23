@@ -1,41 +1,30 @@
-<ion-header>
-  <ion-navbar>
-    <ion-title>{{ 'Address Book' | translate }}</ion-title>
-    <ion-buttons *ngIf="!isEmptyList" right>
-      <button ion-button (click)="addEntry()">{{ 'Add' | translate }}</button>
-    </ion-buttons>
-  </ion-navbar>
-</ion-header>
-
-<ion-content>
-  <div class="zero-state" *ngIf="isEmptyList">
-    <ion-icon class="zero-state-icon">
-      <img class="svg" src="assets/img/address-book-add.svg" />
-    </ion-icon>
-    <div class="zero-state-heading" translate>No contacts yet</div>
-    <div class="zero-state-description" translate>
-      Get started by adding your first one.
-    </div>
-    <button ion-button class="button-standard" (click)="addEntry()">
-      {{ 'Add Contact' | translate }}
+<wide-header-page title="{{'Address Book'|translate}}">
+  <ion-buttons *ngIf="!isEmptyList" right>
+    <button clear wide-header-bar-button (click)="addEntry()" ion-button>
+      <span translate>New contact</span>
     </button>
-  </div>
-
-  <div *ngIf="!isEmptyList">
-    <ion-searchbar placeholder="{{'Search a contact' | translate}}" (ionInput)="getItems($event)"></ion-searchbar>
-    <div class="sortContainer">
-      <span *ngIf="!showReorder && addressbook.length > 1" (click)="reorder()" class="reorder-button" tappable>
-        <img src="assets/img/sort.svg" />
-      </span>
-      <span *ngIf="showReorder" (click)="reorder()" class="reorder-done" tappable>
-        {{ 'Done' | translate }}
-      </span>
+  </ion-buttons>
+  <div page-content>
+    <search-bar *ngIf="!isEmptyList" [scrollArea]="wideHeaderPage?.scrollArea" (search)="getItems($event)" placeholder="{{'Search a contact' | translate}}"></search-bar>
+    <div class="zero-state" *ngIf="isEmptyList">
+      <ion-icon class="zero-state-icon">
+        <img class="svg" src="assets/img/address-book-add.svg" />
+      </ion-icon>
+      <div class="zero-state-heading" translate>No contacts yet</div>
+      <div class="zero-state-description" translate>Get started by adding your first one.</div>
+      <button ion-button class="button-standard" (click)="addEntry()">
+        {{'New contact' | translate}}
+      </button>
     </div>
 
-    <ion-list class="sliding-container addressbook" reorder="{{showReorder}}" (ionItemReorder)="reorderAddresses($event)">
-      <button ion-item detail-none *ngFor="let entry of (addressbook | orderBy: ['order'])" (click)="viewEntry(entry)">
-        <address-item-content [entry]="entry"></address-item-content>
+    <ion-list class="bp-list" margin-top>
+      <button ion-item *ngFor="let entry of filteredAddressbook | orderBy : ['name']" (click)="viewEntry(entry)">
+        <ion-icon item-start>
+          <gravatar [name]="entry.name" [height]="40" [width]="40" [email]="entry.email" [coin]="entry.coin" [network]="entry.network"></gravatar>
+        </ion-icon>
+        <div class="item-title">{{ entry.name }}</div>
+        <div class="item-subtitle">{{ entry.address }}</div>
       </button>
     </ion-list>
   </div>
-</ion-content>
+</wide-header-page>

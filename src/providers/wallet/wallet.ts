@@ -9,6 +9,7 @@ import { AddressProvider } from '../address/address';
 import { BwcErrorProvider } from '../bwc-error/bwc-error';
 import { BwcProvider } from '../bwc/bwc';
 import { ConfigProvider } from '../config/config';
+import { Coin, CurrencyProvider } from '../currency/currency';
 import { FeeProvider } from '../fee/fee';
 import { FilterProvider } from '../filter/filter';
 import { KeyProvider } from '../key/key';
@@ -26,11 +27,6 @@ export interface HistoryOptionsI {
   lowAmount?: number;
   force?: boolean;
   retry?: boolean; // TODO: not used
-}
-
-export enum Coin {
-  BTC = 'btc',
-  BCH = 'bch'
 }
 
 export interface WalletOptions {
@@ -52,15 +48,20 @@ export interface WalletOptions {
   walletPrivKey: any;
   compliantDerivation: any;
   useLegacyCoinType?: boolean;
+  useLegacyPurpose?: boolean;
+  useNativeSegwit?: boolean;
 }
 
 export interface TransactionProposal {
+  coin: string;
   amount: any;
+  from: string;
   toAddress: any;
   outputs: Array<{
     toAddress: any;
     amount: any;
     message: string;
+    data?: string;
   }>;
   inputs: any;
   fee: any;
@@ -76,6 +77,9 @@ export interface TransactionProposal {
   feePerKb: number;
   feeLevel: string;
   dryRun: boolean;
+  tokenAddress?: string;
+  destinationTag?: string;
+  invoiceID?: string;
 }
 
 @Injectable()
@@ -90,6 +94,7 @@ export class WalletProvider {
   private WALLET_STATUS_DELAY_BETWEEN_TRIES: number = 1.6 * 1000;
   private SOFT_CONFIRMATION_LIMIT: number = 12;
   private SAFE_CONFIRMATIONS: number = 6;
+  private DEFAULT_RBF_SEQNUMBER = 0xffffffff;
 
   private errors = this.bwcProvider.getErrors();
 
@@ -104,11 +109,11 @@ export class WalletProvider {
     private bwcProvider: BwcProvider,
     private txFormatProvider: TxFormatProvider,
     private configProvider: ConfigProvider,
+    private currencyProvider: CurrencyProvider,
     private persistenceProvider: PersistenceProvider,
     private bwcErrorProvider: BwcErrorProvider,
     private rateProvider: RateProvider,
     private filter: FilterProvider,
-    private languageProvider: LanguageProvider,
     private popupProvider: PopupProvider,
     private onGoingProcessProvider: OnGoingProcessProvider,
     private touchidProvider: TouchIdProvider,
@@ -116,6 +121,7 @@ export class WalletProvider {
     private feeProvider: FeeProvider,
     private translate: TranslateService,
     private addressProvider: AddressProvider,
+    private languageProvider: LanguageProvider,
     private keyProvider: KeyProvider
   ) {
     this.logger.debug('WalletProvider initialized');
@@ -150,7 +156,7 @@ export class WalletProvider {
             return;
           }
 
-          const action = _.find(tx.actions, {
+          const action: any = _.find(tx.actions, {
             copayerId: tx.wallet.copayerId
           });
 
@@ -176,7 +182,6 @@ export class WalletProvider {
 
         const configGet = this.configProvider.get();
         const config = configGet.wallet;
-
         const cache = wallet.cachedStatus;
 
         // Address with Balance
@@ -203,7 +208,9 @@ export class WalletProvider {
         }
 
         // Selected unit
-        cache.unitToSatoshi = config.settings.unitToSatoshi;
+        cache.unitToSatoshi = this.currencyProvider.getPrecision(
+          wallet.coin
+        ).unitToSatoshi;
         cache.satToUnit = 1 / cache.unitToSatoshi;
 
         // STR
@@ -346,55 +353,61 @@ export class WalletProvider {
             // This will update exchange rates
             cacheStatus(wallet.cachedStatus);
 
-            //
-            checkAndUpdateAdddress();
+            if (this.currencyProvider.isUtxoCoin(wallet.coin)) {
+              checkAndUpdateAdddress();
+            }
 
             processPendingTxps(wallet.cachedStatus);
             return resolve(wallet.cachedStatus);
           }
 
           tries = tries || 0;
-          wallet.getStatus({}, (err, status) => {
-            if (err) {
-              if (err instanceof this.errors.NOT_AUTHORIZED) {
-                return reject('WALLET_NOT_REGISTERED');
-              }
-              return reject(err);
-            }
+          const { token } = wallet.credentials;
 
-            if (opts.until) {
-              if (
-                !hasMeet(opts.until, status.balance) &&
-                tries < this.WALLET_STATUS_MAX_TRIES
-              ) {
-                this.logger.debug(
-                  'Retrying update... ' +
-                    walletId +
-                    ' Try:' +
-                    tries +
-                    ' until:',
-                  opts.until
-                );
-                return setTimeout(() => {
-                  return resolve(doFetchStatus(++tries));
-                }, this.WALLET_STATUS_DELAY_BETWEEN_TRIES * tries);
+          wallet.getStatus(
+            { tokenAddress: token ? token.address : '' },
+            (err, status) => {
+              if (err) {
+                if (err instanceof this.errors.NOT_AUTHORIZED) {
+                  return reject('WALLET_NOT_REGISTERED');
+                }
+                return reject(err);
+              }
+
+              if (opts.until) {
+                if (
+                  !hasMeet(opts.until, status.balance) &&
+                  tries < this.WALLET_STATUS_MAX_TRIES
+                ) {
+                  this.logger.debug(
+                    'Retrying update... ' +
+                      walletId +
+                      ' Try:' +
+                      tries +
+                      ' until:',
+                    opts.until
+                  );
+                  return setTimeout(() => {
+                    return resolve(doFetchStatus(++tries));
+                  }, this.WALLET_STATUS_DELAY_BETWEEN_TRIES * tries);
+                } else {
+                  this.logger.debug(
+                    '# Got Wallet Status for: ' + wallet.id + ' after meeting:',
+                    opts.until
+                  );
+                }
               } else {
-                this.logger.debug(
-                  '# Got Wallet Status for: ' + wallet.id + ' after meeting:',
-                  opts.until
-                );
+                this.logger.debug('# Got Wallet Status for: ' + wallet.id);
               }
-            } else {
-              this.logger.debug('# Got Wallet Status for: ' + wallet.id);
+              processPendingTxps(status);
+              cacheStatus(status);
+
+              wallet.scanning =
+                status.wallet && status.wallet.scanStatus == 'running';
+
+              return resolve(status);
             }
-            processPendingTxps(status);
-            cacheStatus(status);
-
-            wallet.scanning =
-              status.wallet && status.wallet.scanStatus == 'running';
-
-            return resolve(status);
-          });
+          );
         });
       };
 
@@ -428,6 +441,98 @@ export class WalletProvider {
     });
   }
 
+  private getWalletTotalBalanceAlternative(
+    balanceSat: number,
+    coin: string,
+    isoCode: string
+  ): string {
+    const balance = this.rateProvider.toFiat(balanceSat, isoCode, coin);
+    return balance ? balance.toFixed(2) : '0.00';
+  }
+
+  private getWalletTotalBalanceAlternativeLastDay(
+    balanceSat: number,
+    coin: string,
+    isoCode: string,
+    lastDayRatesArray: any
+  ): string {
+    const balanceLastDay = this.rateProvider.toFiat(balanceSat, isoCode, coin, {
+      customRate: lastDayRatesArray[coin]
+    });
+    return balanceLastDay ? balanceLastDay.toFixed(2) : '0.00';
+  }
+
+  private calcTotalAmount(statusWallet, wallet, isoCode, lastDayRatesArray) {
+    let walletTotalBalanceAlternative = 0;
+    let walletTotalBalanceAlternativeLastDay = 0;
+    if (wallet.network === 'livenet' && !wallet.hidden) {
+      const balance =
+        wallet.coin === 'xrp'
+          ? statusWallet.availableBalanceSat
+          : statusWallet.totalBalanceSat;
+      walletTotalBalanceAlternativeLastDay = parseFloat(
+        this.getWalletTotalBalanceAlternativeLastDay(
+          balance,
+          wallet.coin,
+          isoCode,
+          lastDayRatesArray
+        )
+      );
+      walletTotalBalanceAlternative = parseFloat(
+        this.getWalletTotalBalanceAlternative(balance, wallet.coin, isoCode)
+      );
+    }
+    return {
+      walletTotalBalanceAlternative,
+      walletTotalBalanceAlternativeLastDay
+    };
+  }
+
+  public async getTotalAmount(wallets, lastDayRatesArray) {
+    const isoCode =
+      this.configProvider.get().wallet.settings.alternativeIsoCode || 'USD';
+    if (_.isEmpty(wallets))
+      return {
+        isoCode,
+        totalBalanceAlternative: '0',
+        averagePrice: 0
+      };
+
+    const totalAmountArray = [];
+
+    _.each(wallets, wallet => {
+      totalAmountArray.push(
+        this.calcTotalAmount(
+          wallet.cachedStatus,
+          wallet,
+          isoCode,
+          lastDayRatesArray
+        )
+      );
+    });
+
+    const totalBalanceAlternative = _.sumBy(
+      _.compact(totalAmountArray),
+      b => b.walletTotalBalanceAlternative
+    ).toFixed(2);
+    const totalBalanceAlternativeLastDay = _.sumBy(
+      _.compact(totalAmountArray),
+      b => b.walletTotalBalanceAlternativeLastDay
+    ).toFixed(2);
+    const difference =
+      parseFloat(totalBalanceAlternative.replace(/,/g, '')) -
+      parseFloat(totalBalanceAlternativeLastDay.replace(/,/g, ''));
+    const averagePrice =
+      (difference * 100) /
+      parseFloat(totalBalanceAlternative.replace(/,/g, ''));
+
+    return {
+      totalBalanceAlternativeIsoCode: isoCode,
+      totalBalanceAlternative,
+      averagePrice
+    };
+  }
+
   // Check address
   private isAddressUsed(wallet, byAddress): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -445,21 +550,13 @@ export class WalletProvider {
     });
   }
 
-  public getAddressView(
-    coin: string,
-    network: string,
-    address: string
-  ): string {
+  public getAddressView(coin: Coin, network: string, address: string): string {
     if (coin != 'bch') return address;
     const protoAddr = this.getProtoAddress(coin, network, address);
     return protoAddr;
   }
 
-  public getProtoAddress(
-    coin: string,
-    network: string,
-    address: string
-  ): string {
+  public getProtoAddress(coin: Coin, network: string, address: string): string {
     const proto: string = this.getProtocolHandler(coin, network);
     const protoAddr: string = proto + ':' + address;
     return protoAddr;
@@ -467,14 +564,20 @@ export class WalletProvider {
 
   public getAddress(wallet, forceNew: boolean): Promise<string> {
     return new Promise((resolve, reject) => {
+      let walletId = wallet.id;
+      const { token } = wallet.credentials;
+
+      if (token) {
+        walletId = wallet.id.replace(`-${token.address}`, '');
+      }
       this.persistenceProvider
-        .getLastAddress(wallet.id)
+        .getLastAddress(walletId)
         .then((addr: string) => {
           if (addr) {
             // prevent to show legacy address
             const isBchLegacy = wallet.coin == 'bch' && addr.match(/^[CHmn]/);
-
-            if (!forceNew && !isBchLegacy) return resolve(addr);
+            const isValid = this.addressProvider.isValid(addr);
+            if (!forceNew && !isBchLegacy && isValid) return resolve(addr);
           }
 
           if (!wallet.isComplete())
@@ -487,7 +590,7 @@ export class WalletProvider {
           this.createAddress(wallet)
             .then(_addr => {
               this.persistenceProvider
-                .storeLastAddress(wallet.id, _addr)
+                .storeLastAddress(walletId, _addr)
                 .then(() => {
                   return resolve(_addr);
                 })
@@ -588,10 +691,13 @@ export class WalletProvider {
         shouldContinue: res.length >= limit
       };
 
+      const { token } = wallet.credentials;
+
       wallet.getTxHistory(
         {
           skip,
-          limit
+          limit,
+          tokenAddress: token ? token.address : ''
         },
         (err: Error, txsFromServer) => {
           if (err) return reject(err);
@@ -623,7 +729,7 @@ export class WalletProvider {
       let requestLimit = FIRST_LIMIT;
       const walletId = wallet.credentials.walletId;
       WalletProvider.progressFn[walletId] = progressFn || (() => {});
-      let foundLimitTx = [];
+      let foundLimitTx: any = [];
 
       const fixTxsUnit = (txs): void => {
         if (!txs || !txs[0] || !txs[0].amountStr) return;
@@ -686,15 +792,17 @@ export class WalletProvider {
           ): Promise<any> => {
             return new Promise((resolve, reject) => {
               this.fetchTxsFromServer(wallet, skip, endingTxid, requestLimit)
-                .then(result => {
+                .then(async result => {
                   const res = result.res;
                   const shouldContinue = result.shouldContinue
                     ? result.shouldContinue
                     : false;
 
-                  newTxs = newTxs.concat(
-                    this.processNewTxs(wallet, _.compact(res))
+                  const _newTxs = await this.processNewTxs(
+                    wallet,
+                    _.compact(res)
                   );
+                  newTxs = newTxs.concat(_newTxs);
                   WalletProvider.progressFn[walletId](
                     newTxs.concat(txsFromLocal),
                     newTxs.length
@@ -717,7 +825,7 @@ export class WalletProvider {
                   // do not sync all history, just looking for a single TX.
                   if (opts.limitTx) {
                     foundLimitTx = _.find(newTxs.concat(txsFromLocal), {
-                      txid: opts.limitTx
+                      txid: opts.limitTx as any
                     });
                     if (!_.isEmpty(foundLimitTx)) {
                       this.logger.debug('Found limitTX: ' + opts.limitTx);
@@ -801,10 +909,12 @@ export class WalletProvider {
                 });
               };
 
-              this.getLowAmount(wallet).then(fee => {
-                opts.lowAmount = fee;
-                updateLowAmount(txs);
-              });
+              if (this.currencyProvider.isUtxoCoin(wallet.coin)) {
+                this.getLowAmount(wallet).then(fee => {
+                  opts.lowAmount = fee;
+                  updateLowAmount(txs);
+                });
+              }
 
               updateNotes()
                 .then(() => {
@@ -856,17 +966,30 @@ export class WalletProvider {
     });
   }
 
-  private processNewTxs(wallet, txs) {
+  private async processNewTxs(wallet, txs): Promise<any> {
     const now = Math.floor(Date.now() / 1000);
     const txHistoryUnique = {};
     const ret = [];
     wallet.hasUnsafeConfirmed = false;
 
-    _.each(txs, tx => {
+    for (let tx of txs) {
       tx = this.txFormatProvider.processTx(wallet.coin, tx);
 
       // no future transactions...
       if (tx.time > now) tx.time = now;
+
+      if (tx.confirmations === 0 && wallet.coin === 'btc') {
+        const coins = await this.getCoinsForTx(wallet, tx.txid);
+        tx.isRBF = _.some(coins.inputs, input => {
+          return (
+            input.sequenceNumber &&
+            input.sequenceNumber < this.DEFAULT_RBF_SEQNUMBER - 1
+          );
+        });
+        tx.hasUnconfirmedInputs = _.some(coins.inputs, input => {
+          return input.mintHeight < 0;
+        });
+      }
 
       if (tx.confirmations >= this.SAFE_CONFIRMATIONS) {
         tx.safeConfirmed = this.SAFE_CONFIRMATIONS + '+';
@@ -886,9 +1009,8 @@ export class WalletProvider {
       } else {
         this.logger.debug('Ignoring duplicate TX in history: ' + tx.txid);
       }
-    });
-
-    return ret;
+    }
+    return Promise.resolve(ret);
   }
 
   public removeAndMarkSoftConfirmedTx(txs): any[] {
@@ -945,14 +1067,18 @@ export class WalletProvider {
     }
   }
 
-  private getEstimatedTxSize(wallet, nbOutputs?: number): number {
+  public getEstimatedTxSize(
+    wallet,
+    nbOutputs?: number,
+    nbInputs?: number
+  ): number {
     // Note: found empirically based on all multisig P2SH inputs and within m & n allowed limits.
     nbOutputs = nbOutputs ? nbOutputs : 2; // Assume 2 outputs
     const safetyMargin = 0.02;
     const overhead = 4 + 4 + 9 + 9;
     const inputSize = this.getEstimatedSizeForSingleInput(wallet);
     const outputSize = 34;
-    const nbInputs = 1; // Assume 1 input
+    nbInputs = nbInputs ? nbInputs : 1; // Assume 1 input
 
     const size = overhead + inputSize * nbInputs + outputSize * nbOutputs;
     return parseInt((size * (1 + safetyMargin)).toFixed(0), 10);
@@ -1149,7 +1275,6 @@ export class WalletProvider {
 
         this.logger.info('Transaction broadcasted: ', broadcastedTxp.txid);
         if (memo) this.logger.info('Memo: ', memo);
-
         return resolve(broadcastedTxp);
       });
     });
@@ -1185,76 +1310,54 @@ export class WalletProvider {
     });
   }
 
-  public updateRemotePreferences(clients, prefs?): Promise<any> {
+  // updates local and remote prefs for 1 wallet
+  public updateRemotePreferencesFor(client, prefs): Promise<any> {
     return new Promise((resolve, reject) => {
-      prefs = prefs ? prefs : {};
+      client.preferences = client.preferences || {};
+      if (!_.isEmpty(prefs)) {
+        _.assign(client.preferences, prefs);
+      }
 
-      if (!_.isArray(clients)) clients = [clients];
+      this.logger.debug(
+        'Saving remote preferences',
+        client.credentials.walletName,
+        JSON.stringify(client.preferences)
+      );
 
-      const updateRemotePreferencesFor = (clients, prefs): Promise<any> => {
-        return new Promise((resolve, reject) => {
-          const wallet = clients.shift();
-          if (!wallet) return resolve();
-          this.logger.debug(
-            'Saving remote preferences',
-            wallet.credentials.walletName,
-            prefs
+      client.savePreferences(client.preferences, err => {
+        if (err) {
+          this.popupProvider.ionicAlert(
+            this.bwcErrorProvider.msg(
+              err,
+              this.translate.instant('Could not save preferences on the server')
+            )
           );
-
-          wallet.savePreferences(prefs, err => {
-            if (err) {
-              this.popupProvider.ionicAlert(
-                this.bwcErrorProvider.msg(
-                  err,
-                  this.translate.instant(
-                    'Could not save preferences on the server'
-                  )
-                )
-              );
-              return reject(err);
-            }
-
-            updateRemotePreferencesFor(clients, prefs)
-              .then(() => {
-                return resolve();
-              })
-              .catch(err => {
-                return reject(err);
-              });
-          });
-        });
-      };
-
-      // Update this JIC.
-      const config = this.configProvider.get();
-
-      // Get email from local config
-      prefs.email = config.emailNotifications.email;
-
-      // Get current languge
-      prefs.language = this.languageProvider.getCurrent();
-
-      // Set OLD wallet in bits to btc
-      prefs.unit = 'btc'; // DEPRECATED
-
-      updateRemotePreferencesFor(_.clone(clients), prefs)
-        .then(() => {
-          this.logger.debug(
-            'Remote preferences saved for' +
-              _.map(clients, (x: any) => {
-                return x.credentials.walletId;
-              }).join(',')
-          );
-
-          _.each(clients, c => {
-            c.preferences = _.assign(prefs, c.preferences);
-          });
-          return resolve();
-        })
-        .catch(err => {
           return reject(err);
-        });
+        }
+        return resolve();
+      });
     });
+  }
+
+  public updateRemotePreferences(clients): Promise<any> {
+    if (!_.isArray(clients)) clients = [clients];
+
+    // Set current preferences
+    const config = this.configProvider.get();
+    const prefs = {
+      email: config.emailNotifications.email,
+      language: this.languageProvider.getCurrent(),
+      unit: 'btc' // deprecated
+    };
+
+    let updates = [];
+    clients.forEach(c => {
+      if (this.currencyProvider.isERCToken(c.credentials.coin)) return;
+
+      updates.push(this.updateRemotePreferencesFor(c, prefs));
+    });
+
+    return Promise.all(updates);
   }
 
   public recreate(wallet): Promise<any> {
@@ -1366,6 +1469,37 @@ export class WalletProvider {
             .catch(err => {
               return reject(err);
             });
+        }
+      );
+    });
+  }
+
+  public getUtxos(wallet): Promise<any> {
+    return new Promise((resolve, reject) => {
+      wallet.getUtxos(
+        {
+          coin: wallet.coin
+        },
+        (err, resp) => {
+          if (err || !resp || !resp.length)
+            return reject(err ? err : 'No UTXOs');
+          return resolve(resp);
+        }
+      );
+    });
+  }
+
+  public getCoinsForTx(wallet, txId): Promise<any> {
+    return new Promise((resolve, reject) => {
+      wallet.getCoinsForTx(
+        {
+          coin: wallet.coin,
+          network: wallet.network,
+          txId
+        },
+        (err, resp) => {
+          if (err) return reject(err);
+          return resolve(resp);
         }
       );
     });
@@ -1661,12 +1795,18 @@ export class WalletProvider {
     });
   }
 
-  public getProtocolHandler(coin: string, network?: string): string {
-    if (coin == 'bch') {
-      return network == 'testnet' ? 'bchtest' : 'bitcoincash';
-    } else {
-      return 'bitcoin';
-    }
+  public getEstimateGas(wallet, opts): Promise<any> {
+    return new Promise((resolve, reject) => {
+      opts = opts || {};
+      wallet.getEstimateGas(opts, (err, res) => {
+        if (err) return reject(err);
+        return resolve(res);
+      });
+    });
+  }
+
+  public getProtocolHandler(coin: Coin, network: string = 'livenet'): string {
+    return this.currencyProvider.getProtocolPrefix(coin, network);
   }
 
   public copyCopayers(wallet: any, newWallet: any): Promise<any> {

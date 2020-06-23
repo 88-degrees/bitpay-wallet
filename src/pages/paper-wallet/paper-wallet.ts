@@ -1,16 +1,20 @@
 import { Component, ViewChild } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
-import { App, ModalController, NavController, NavParams } from 'ionic-angular';
+import { ModalController, NavController, NavParams } from 'ionic-angular';
 import * as _ from 'lodash';
 
 // pages
 import { FinishModalPage } from '../finish/finish';
-import { TabsPage } from '../tabs/tabs';
 
 // providers
 import { ActionSheetProvider } from '../../providers/action-sheet/action-sheet';
 import { BwcErrorProvider } from '../../providers/bwc-error/bwc-error';
 import { BwcProvider } from '../../providers/bwc/bwc';
+import {
+  Coin,
+  CoinsMap,
+  CurrencyProvider
+} from '../../providers/currency/currency';
 import { FeeProvider } from '../../providers/fee/fee';
 import { Logger } from '../../providers/logger/logger';
 import { OnGoingProcessProvider } from '../../providers/on-going-process/on-going-process';
@@ -28,7 +32,7 @@ export class PaperWalletPage {
   slideButton;
 
   public selectedWallet;
-  public wallet = {};
+  public wallet = {} as CoinsMap<any>;
   public walletName: string;
   public M: number;
   public N: number;
@@ -36,7 +40,7 @@ export class PaperWalletPage {
   public network: string;
   public wallets;
   // All coins for which we have a usable wallet to sweep to
-  public coins: string[];
+  public coins: Coin[];
   public scannedKey: string;
   public isPkEncrypted: boolean;
   public passphrase: string;
@@ -50,7 +54,6 @@ export class PaperWalletPage {
   public isCordova: boolean;
 
   constructor(
-    private app: App,
     private actionSheetProvider: ActionSheetProvider,
     private navCtrl: NavController,
     private navParams: NavParams,
@@ -64,7 +67,8 @@ export class PaperWalletPage {
     private modalCtrl: ModalController,
     private translate: TranslateService,
     private platformProvider: PlatformProvider,
-    private bwcErrorProvider: BwcErrorProvider
+    private bwcErrorProvider: BwcErrorProvider,
+    private currencyProvider: CurrencyProvider
   ) {
     this.bitcore = this.bwcProvider.getBitcore();
     this.isCordova = this.platformProvider.isCordova;
@@ -80,21 +84,20 @@ export class PaperWalletPage {
     });
 
     this.wallets = _.filter(_.clone(this.wallets), wallet => {
-      return !wallet.needsBackup;
+      return (
+        !wallet.needsBackup && this.currencyProvider.isUtxoCoin(wallet.coin)
+      );
     });
 
     this.coins = _.uniq(
       _.map(this.wallets, (wallet: Partial<WalletOptions>) => wallet.coin)
     );
 
-    this.wallet = {
-      btc: _.filter(this.wallets, w => {
-        return w.coin == 'btc';
-      })[0],
-      bch: _.filter(this.wallets, w => {
-        return w.coin == 'bch';
-      })[0]
-    };
+    for (const coin of this.coins) {
+      this.wallet[coin] = _.filter(this.wallets, w => {
+        return w.coin == coin;
+      })[0];
+    }
   }
 
   ionViewWillLeave() {
@@ -117,8 +120,12 @@ export class PaperWalletPage {
         });
       return;
     }
-    if (!this.isPkEncrypted) this.scanFunds();
-    else {
+    if (!this.isPkEncrypted) {
+      this.onGoingProcessProvider.set('scanning');
+      setTimeout(() => {
+        this.scanFunds();
+      }, 200);
+    } else {
       let message = this.translate.instant(
         'Private key encrypted. Enter password'
       );
@@ -127,7 +134,12 @@ export class PaperWalletPage {
         enableBackdropDismiss: false
       };
       this.popupProvider.ionicPrompt(null, message, opts).then(res => {
+        if (res === null) {
+          this.navCtrl.popToRoot();
+          return;
+        }
         this.passphrase = res;
+        this.onGoingProcessProvider.set('scanning');
         setTimeout(() => {
           this.scanFunds();
         }, 200);
@@ -187,8 +199,6 @@ export class PaperWalletPage {
   }
 
   public scanFunds(): void {
-    this.onGoingProcessProvider.set('scanning');
-
     let scans = _.map(this.coins, (coin: string) => this._scanFunds(coin));
 
     Promise.all(scans)
@@ -257,7 +267,7 @@ export class PaperWalletPage {
                 .getFeeRate(
                   balanceToSweep.coin,
                   'livenet',
-                  this.feeProvider.getCurrentFeeLevel()
+                  this.feeProvider.getCoinCurrentFeeLevel(balanceToSweep.coin)
                 )
                 .then((feePerKb: number) => {
                   opts.fee = Math.round((feePerKb * rawTxLength) / 2000);
@@ -349,8 +359,7 @@ export class PaperWalletPage {
     );
     modal.present();
     modal.onDidDismiss(() => {
-      // using setRoot(TabsPage) as workaround when coming from scanner
-      this.app.getRootNavs()[0].setRoot(TabsPage);
+      this.navCtrl.popToRoot();
     });
   }
 }

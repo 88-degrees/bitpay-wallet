@@ -9,11 +9,15 @@ import { SessionLogPage } from './session-log/session-log';
 // providers
 import {
   AppProvider,
+  BitPayProvider,
+  ConfigProvider,
   ExternalLinkProvider,
   Logger,
   PersistenceProvider,
-  ReplaceParametersProvider
+  ReplaceParametersProvider,
+  ThemeProvider
 } from '../../../providers';
+
 @Component({
   selector: 'page-about',
   templateUrl: 'about.html'
@@ -22,8 +26,8 @@ export class AboutPage {
   public version: string;
   public commitHash: string;
   public title: string;
-  public versionItemTapped: number;
-
+  private tapped = 0;
+  public pressed: number = 0;
   constructor(
     private navCtrl: NavController,
     private appProvider: AppProvider,
@@ -31,10 +35,11 @@ export class AboutPage {
     private externalLinkProvider: ExternalLinkProvider,
     private replaceParametersProvider: ReplaceParametersProvider,
     private translate: TranslateService,
-    private persistenceProvider: PersistenceProvider
-  ) {
-    this.versionItemTapped = 0;
-  }
+    private bitpayProvider: BitPayProvider,
+    private persistenceProvider: PersistenceProvider,
+    private configProvider: ConfigProvider,
+    private themeProvider: ThemeProvider
+  ) {}
 
   ionViewDidLoad() {
     this.logger.info('Loaded: AboutPage');
@@ -70,40 +75,6 @@ export class AboutPage {
     );
   }
 
-  public openTermsOfUse() {
-    const url = 'https://bitpay.com/about/terms#wallet';
-    const optIn = true;
-    const title = null;
-    const message = this.translate.instant('View Wallet Terms of Use');
-    const okText = this.translate.instant('Open');
-    const cancelText = this.translate.instant('Go Back');
-    this.externalLinkProvider.open(
-      url,
-      optIn,
-      title,
-      message,
-      okText,
-      cancelText
-    );
-  }
-
-  public openPrivacyPolicy() {
-    const url = 'https://bitpay.com/about/privacy';
-    const optIn = true;
-    const title = null;
-    const message = this.translate.instant('View Privacy Policy');
-    const okText = this.translate.instant('Open');
-    const cancelText = this.translate.instant('Go Back');
-    this.externalLinkProvider.open(
-      url,
-      optIn,
-      title,
-      message,
-      okText,
-      cancelText
-    );
-  }
-
   public openSessionLog(): void {
     this.navCtrl.push(SessionLogPage);
   }
@@ -112,15 +83,26 @@ export class AboutPage {
     this.navCtrl.push(SendFeedbackPage);
   }
 
-  public itemTapped() {
-    this.versionItemTapped++;
-    if (this.versionItemTapped >= 5) {
-      this.versionItemTapped = 0;
-      this.persistenceProvider.getHiddenFeaturesFlag().then(res => {
-        res === 'enabled'
-          ? this.persistenceProvider.removeHiddenFeaturesFlag()
-          : this.persistenceProvider.setHiddenFeaturesFlag('enabled');
-        this.navCtrl.popToRoot();
+  // adding this for testing purposes
+  public async wipeBitPayAccounts() {
+    this.tapped++;
+    if (this.tapped >= 10) {
+      await this.persistenceProvider.removeAllBitPayAccounts(
+        this.bitpayProvider.getEnvironment().network
+      );
+      alert('removed accounts');
+      this.tapped = 0;
+    }
+  }
+
+  public async easterEgg() {
+    const config = this.configProvider.get();
+    if (config.theme.enabled) return;
+    this.pressed++;
+    if (this.pressed == 5) {
+      this.themeProvider.getDetectedSystemTheme().then(detectedTheme => {
+        this.themeProvider.setActiveTheme('system', detectedTheme);
+        this.pressed = 0;
       });
     }
   }
