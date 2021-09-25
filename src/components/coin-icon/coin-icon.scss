@@ -38,6 +38,24 @@ coin-icon {
       &_busd {
         background-color: #f3ba2d;
       }
+      &_dai {
+        background-color: #ff9e2f;
+      }
+      &_wbtc {
+        background-color: #000000;
+      }
+      &_doge {
+        background-color: #d8c172;
+      }
+      &_ltc {
+        background-color: #a6a9aa;
+      }
+      &_default {
+        background-color: #e6f8e9;
+      }
     }
+  }
+  .ion-logo-usd:before {
+    padding: 8px 11.5px;
   }
 }

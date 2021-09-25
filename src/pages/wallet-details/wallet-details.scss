@@ -62,9 +62,7 @@ page-wallet-details {
   }
 
   .balance-error {
-    width: 100vw;
-    margin-left: -5rem;
-    padding: 0rem 2rem;
+    width: 100%;
     text-align: center;
 
     .title {
@@ -89,7 +87,15 @@ page-wallet-details {
     display: flex;
     justify-content: space-between;
     width: 100%;
-    padding: 0 1.4rem 3rem 1.4rem;
+    padding: 2rem 1rem;
+    &.two-actions {
+      justify-content: space-around;
+    }
+    .action-btn {
+      text-align: center;
+      min-width: 7rem;
+      cursor: pointer;
+    }
     .button-standard {
       color: #000000;
       font-weight: bold;
@@ -373,5 +379,17 @@ page-wallet-details {
   }
   .danger-background {
     background-color: color($background-colors, danger);
+  }
+  action-card {
+    .main-label {
+      display: flex;
+      justify-content: space-between;
+    }
+    .action-card__body {
+      text-align: left !important;
+    }
+    .button-standard {
+      margin: 5px auto;
+    }
   }
 }

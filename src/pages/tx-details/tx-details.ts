@@ -10,7 +10,6 @@ import * as _ from 'lodash';
 import { Logger } from '../../providers/logger/logger';
 
 // Providers
-import { AddressBookProvider } from '../../providers/address-book/address-book';
 import { ConfigProvider } from '../../providers/config/config';
 import { CurrencyProvider } from '../../providers/currency/currency';
 import { ExternalLinkProvider } from '../../providers/external-link/external-link';
@@ -31,6 +30,8 @@ export class TxDetailsModal {
   private txId: string;
   private config;
   private blockexplorerUrl: string;
+  private blockexplorerUrlTestnet: string;
+  private retryGetTx: number = 0;
 
   public wallet;
   public btx;
@@ -41,13 +42,11 @@ export class TxDetailsModal {
   public color: string;
   public copayerId: string;
   public txsUnsubscribedForNotifications: boolean;
-  public contactName: string;
   public txMemo: string;
 
   constructor(
-    private addressBookProvider: AddressBookProvider,
     private configProvider: ConfigProvider,
-    private currencyProvider: CurrencyProvider,
+    public currencyProvider: CurrencyProvider,
     private events: Events,
     private externalLinkProvider: ExternalLinkProvider,
     private logger: Logger,
@@ -80,6 +79,8 @@ export class TxDetailsModal {
 
     let defaults = this.configProvider.getDefaults();
     this.blockexplorerUrl = defaults.blockExplorerUrl[this.wallet.coin];
+    this.blockexplorerUrlTestnet =
+      defaults.blockExplorerUrlTestnet[this.wallet.coin];
 
     this.txConfirmNotificationProvider.checkIfEnabled(this.txId).then(res => {
       this.txNotification = {
@@ -98,19 +99,19 @@ export class TxDetailsModal {
     this.events.unsubscribe('bwsEvent', this.bwsEventHandler);
   }
 
-  private bwsEventHandler: any = (_, type: string, n) => {
+  private bwsEventHandler: any = data => {
     let match = false;
     if (
-      type == 'NewBlock' &&
-      n &&
-      n.data &&
       this.wallet &&
-      n.data &&
-      n.data.network == this.wallet.network &&
-      n.data.coin == this.wallet.coin
+      data &&
+      (data.notification_type == 'NewBlock' ||
+        data.notification_type == 'TxConfirmation') &&
+      data.notification &&
+      data.notification.network == this.wallet.network &&
+      data.notification.coin == this.wallet.coin
     ) {
       match = true;
-      this.updateTxDebounced({ hideLoading: true });
+      this.updateTxDebounced({ hideLoading: true, force: true });
     }
     this.logger.debug('bwsEvent handler @tx-details. Matched: ' + match);
   };
@@ -156,6 +157,7 @@ export class TxDetailsModal {
 
     let actionDescriptions = {
       created: this.translate.instant('Proposal Created'),
+      failed: this.translate.instant('Execution Failed'),
       accept: this.translate.instant('Accepted'),
       reject: this.translate.instant('Rejected'),
       broadcasted: this.translate.instant('Broadcasted')
@@ -189,8 +191,8 @@ export class TxDetailsModal {
   }
 
   private updateTxDebounced = _.debounce(
-    async hideLoading => {
-      this.updateTx({ hideLoading });
+    async ({ hideLoading, force }) => {
+      this.updateTx({ hideLoading, force });
     },
     1000,
     {
@@ -202,8 +204,9 @@ export class TxDetailsModal {
     opts = opts ? opts : {};
     if (!opts.hideLoading) this.onGoingProcess.set('loadingTxInfo');
     this.walletProvider
-      .getTx(this.wallet, this.txId)
+      .getTx(this.wallet, this.txId, { force: opts.force })
       .then(tx => {
+        this.retryGetTx = 0;
         if (!opts.hideLoading) this.onGoingProcess.clear();
 
         this.btx = this.txFormatProvider.processTx(this.wallet.coin, tx);
@@ -233,16 +236,15 @@ export class TxDetailsModal {
 
         if (this.btx.action != 'invalid') {
           if (this.btx.action == 'sent')
-            this.title = this.translate.instant('Sent Funds');
+            this.title = this.translate.instant('Sent');
           if (this.btx.action == 'received')
-            this.title = this.translate.instant('Received Funds');
+            this.title = this.translate.instant('Received');
           if (this.btx.action == 'moved')
-            this.title = this.translate.instant('Moved Funds');
+            this.title = this.translate.instant('Sent to self');
         }
 
         this.updateMemo();
         this.initActionList();
-        this.contact();
 
         this.updateFiatRate();
 
@@ -259,13 +261,22 @@ export class TxDetailsModal {
         }
       })
       .catch(err => {
-        if (!opts.hideLoading) this.onGoingProcess.clear();
         this.logger.warn('Error getting transaction: ' + err);
-        this.navCtrl.pop();
-        return this.popupProvider.ionicAlert(
-          'Error',
-          this.translate.instant('Transaction not available at this time')
-        );
+        if (err == 'HISTORY_IN_PROGRESS' && this.retryGetTx < 6) {
+          this.logger.debug(
+            'getTx: wait and retry... ' + ++this.retryGetTx + '/5'
+          );
+          setTimeout(() => {
+            this.updateTx();
+          }, 1000);
+        } else {
+          if (!opts.hideLoading) this.onGoingProcess.clear();
+          this.navCtrl.pop();
+          this.popupProvider.ionicAlert(
+            'Error',
+            this.translate.instant('Transaction not available at this time')
+          );
+        }
       });
   }
 
@@ -290,16 +301,25 @@ export class TxDetailsModal {
 
   public viewOnBlockchain(): void {
     let btx = this.btx;
-    const network =
-      this.getShortNetworkName() == 'test' ? 'testnet/' : 'mainnet/';
-    let url =
-      this.wallet.coin !== 'xrp'
-        ? `https://${this.blockexplorerUrl}${network}tx/${btx.txid}`
-        : this.getXRPBlockexplorerUrl() + btx.txid;
+    const coin = btx.coin;
+    let url;
+    switch (coin) {
+      case 'doge':
+        url =
+          this.wallet.credentials.network === 'livenet'
+            ? `https://${this.blockexplorerUrl}dogecoin/transaction/${btx.txid}`
+            : `https://${this.blockexplorerUrlTestnet}tx/DOGETEST/${btx.txid}`;
+        break;
+      default:
+        url =
+          this.wallet.credentials.network === 'livenet'
+            ? `https://${this.blockexplorerUrl}tx/${btx.txid}`
+            : `https://${this.blockexplorerUrlTestnet}tx/${btx.txid}`;
+    }
     let optIn = true;
     let title = null;
-    let message = this.translate.instant('View Transaction on Insight');
-    let okText = this.translate.instant('Open Insight');
+    let message = this.translate.instant('View Transaction');
+    let okText = this.translate.instant('Open');
     let cancelText = this.translate.instant('Go Back');
     this.externalLinkProvider.open(
       url,
@@ -311,42 +331,15 @@ export class TxDetailsModal {
     );
   }
 
-  private getXRPBlockexplorerUrl(): string {
-    let url =
-      this.getShortNetworkName() == 'test'
-        ? 'https://test.bithomp.com/explorer/'
-        : `https://${this.blockexplorerUrl}tx/`;
-    return url;
-  }
-
-  public getShortNetworkName(): string {
-    let n: string = this.wallet.credentials.network;
-    return n.substring(0, 4);
-  }
-
   public txConfirmNotificationChange(): void {
     if (this.txNotification.value) {
       this.txConfirmNotificationProvider.subscribe(this.wallet, {
-        txid: this.txId
+        txid: this.txId,
+        amount: this.btx.amount
       });
     } else {
       this.txConfirmNotificationProvider.unsubscribe(this.wallet, this.txId);
     }
-  }
-
-  private contact(): void {
-    let addr = this.btx.addressTo;
-    this.addressBookProvider
-      .get(addr)
-      .then(ab => {
-        if (ab) {
-          let name = _.isObject(ab) ? ab.name : ab;
-          this.contactName = name;
-        }
-      })
-      .catch(err => {
-        this.logger.warn(err);
-      });
   }
 
   public openExternalLink(url: string): void {

@@ -12,8 +12,10 @@ declare var cordova: any;
 @Injectable()
 export class ThemeProvider {
   public currentAppTheme: string;
+  public currentNavigationType: string;
 
   public availableThemes;
+  public availableNavigationTypes;
 
   public useSystemTheme: boolean = false;
 
@@ -28,6 +30,7 @@ export class ThemeProvider {
     this.availableThemes = {
       light: {
         name: this.translate.instant('Light Mode'),
+        bodyColor: 'initial',
         backgroundColor: '#ffffff',
         fixedScrollBgColor: '#f8f8f9',
         walletDetailsBackgroundStart: '#ffffff',
@@ -35,10 +38,20 @@ export class ThemeProvider {
       },
       dark: {
         name: this.translate.instant('Dark Mode'),
+        bodyColor: '#121212',
         backgroundColor: '#121212',
         fixedScrollBgColor: '#121212',
         walletDetailsBackgroundStart: '#121212',
         walletDetailsBackgroundEnd: '#101010'
+      }
+    };
+
+    this.availableNavigationTypes = {
+      transact: {
+        name: this.translate.instant('Transact')
+      },
+      scan: {
+        name: this.translate.instant('Scan')
       }
     };
   }
@@ -50,8 +63,9 @@ export class ThemeProvider {
 
   public load() {
     return new Promise(resolve => {
-      if (!this.isEnabled()) return resolve();
       const config = this.configProvider.get();
+      this.currentNavigationType = config.navigation.type;
+      if (!this.isEnabled()) return resolve();
       if (!config.theme.system) {
         this.useSystemTheme = false;
         this.currentAppTheme = config.theme.name;
@@ -104,9 +118,10 @@ export class ThemeProvider {
 
   public apply() {
     if (!this.isEnabled()) return;
+    const isDarkMode = this.isDarkModeEnabled();
     if (this.platformProvider.isCordova) {
       setTimeout(() => {
-        if (this.isDarkModeEnabled()) {
+        if (isDarkMode) {
           this.useDarkStatusBar();
         } else {
           this.useLightStatusBar();
@@ -114,12 +129,16 @@ export class ThemeProvider {
       }, 100);
     }
 
+    // Force body background
+    document.body.style.backgroundColor = this.availableThemes[
+      this.currentAppTheme
+    ].bodyColor;
     document
       .getElementsByTagName('ion-app')[0]
       .classList.remove('dark', 'light');
     document
       .getElementsByTagName('ion-app')[0]
-      .classList.add(this.isDarkModeEnabled() ? 'dark' : 'light');
+      .classList.add(isDarkMode ? 'dark' : 'light');
     this.logger.debug('Apply Theme: ' + this.currentAppTheme);
   }
 
@@ -135,6 +154,16 @@ export class ThemeProvider {
     }
     this.setConfigTheme();
     this.apply();
+  }
+
+  public setActiveNavigationType(navigationType: string) {
+    this.currentNavigationType = navigationType;
+    let opts = {
+      navigation: {
+        type: navigationType
+      }
+    };
+    this.configProvider.set(opts);
   }
 
   private setConfigTheme(): void {
@@ -170,6 +199,14 @@ export class ThemeProvider {
 
   public getSelectedTheme() {
     return this.useSystemTheme ? 'system' : this.currentAppTheme;
+  }
+
+  public getCurrentNavigationType() {
+    return this.availableNavigationTypes[this.currentNavigationType].name;
+  }
+
+  public getSelectedNavigationType() {
+    return this.configProvider.get().navigation.type;
   }
 
   private useDarkStatusBar() {

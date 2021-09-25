@@ -2,9 +2,14 @@ import {
   async,
   ComponentFixture,
   fakeAsync,
+  TestBed,
   tick
 } from '@angular/core/testing';
 import { TestUtils } from '../../test';
+
+// providers
+import { ClipboardProvider } from '../../providers/clipboard/clipboard';
+import { PlatformProvider } from '../../providers/platform/platform';
 
 // pages
 import { SendPage } from './send';
@@ -12,6 +17,17 @@ import { SendPage } from './send';
 describe('SendPage', () => {
   let fixture: ComponentFixture<SendPage>;
   let instance;
+  let testBed: typeof TestBed;
+  let clipboardProvider: ClipboardProvider;
+
+  class PlatformProviderMock {
+    isCordova: boolean;
+    isElectron: boolean;
+    constructor() {}
+    getOS() {
+      return { OSName: 'Clipboard Unit Test' };
+    }
+  }
 
   const wallet = {
     coin: 'bch',
@@ -22,6 +38,9 @@ describe('SendPage', () => {
   };
 
   beforeEach(async(() => {
+    testBed = TestUtils.configureProviderTestingModule([
+      { provide: PlatformProvider, useClass: PlatformProviderMock }
+    ]);
     TestUtils.configurePageTestingModule([SendPage]).then(testEnv => {
       fixture = testEnv.fixture;
       instance = testEnv.instance;
@@ -37,17 +56,6 @@ describe('SendPage', () => {
   });
 
   describe('Lifecycle Hooks', () => {
-    describe('ionViewWillEnter', () => {
-      it('should call get functions and subscribe to events', () => {
-        const profileProviderSpy = spyOn(
-          instance.profileProvider,
-          'getWallets'
-        );
-        instance.ionViewWillEnter();
-
-        expect(profileProviderSpy).toHaveBeenCalledWith({ coin: 'bch' });
-      });
-    });
     describe('ionViewWillLeave', () => {
       it('should unsubscribe from events', () => {
         const spy = spyOn(instance.events, 'unsubscribe');
@@ -57,6 +65,30 @@ describe('SendPage', () => {
           instance.updateAddressHandler
         );
       });
+    });
+  });
+
+  describe('setValidDataFromClipboard', () => {
+    beforeEach(() => {
+      PlatformProviderMock.prototype.isCordova = true;
+      PlatformProviderMock.prototype.isElectron = false;
+      clipboardProvider = testBed.get(ClipboardProvider);
+    });
+    it('should ignore data from the clipboard', async () => {
+      spyOn(clipboardProvider, 'getValidData').and.returnValue(
+        Promise.resolve()
+      );
+      await instance.setDataFromClipboard();
+      expect(instance.validDataFromClipboard).toBeUndefined();
+    });
+    it('should set data from the clipboard', async () => {
+      const data = 'mq8Hc2XwYqXw4sPTc8i7wPx9iJzTFTBWbQ';
+      instance.wallet.coin = 'btc';
+      spyOn(clipboardProvider, 'getValidData').and.returnValue(
+        Promise.resolve(data)
+      );
+      await instance.setDataFromClipboard();
+      expect(instance.validDataFromClipboard).toEqual(data);
     });
   });
 
@@ -125,7 +157,8 @@ describe('SendPage', () => {
           'https://bitpay.com/i/MB6kXuVY9frBW1DyoZkE5e',
           'btc',
           undefined,
-          true
+          true,
+          'SendPage'
         );
       }));
 
@@ -329,7 +362,8 @@ describe('SendPage', () => {
           'https://test.bitpay.com/i/S5jbsUtrHVuvYQN6XHPuvJ',
           'btc',
           undefined,
-          true
+          true,
+          'SendPage'
         );
       }));
 
@@ -539,7 +573,8 @@ describe('SendPage', () => {
           'https://bitpay.com/i/3dZDvRXdxpkL4FoWtkB6ZZ',
           'bch',
           undefined,
-          true
+          true,
+          'SendPage'
         );
       }));
 
@@ -743,7 +778,8 @@ describe('SendPage', () => {
           'https://bitpay.com/i/3dZDvRXdxpkL4FoWtkB6ZZ',
           'bch',
           undefined,
-          true
+          true,
+          'SendPage'
         );
       }));
 

@@ -60,17 +60,15 @@ import {
   ViewControllerMock
 } from 'ionic-mocks';
 
-import { AndroidFingerprintAuthMock } from '@ionic-native-mocks/android-fingerprint-auth';
 import { FileMock } from '@ionic-native-mocks/file';
+import { FingerprintAIOMock } from '@ionic-native-mocks/fingerprint-aio';
 import { QRScannerMock } from '@ionic-native-mocks/qr-scanner';
-import { TouchIDMock } from '@ionic-native-mocks/touch-id';
-import { AndroidFingerprintAuth } from '@ionic-native/android-fingerprint-auth';
 import { Device } from '@ionic-native/device';
 import { File } from '@ionic-native/file';
 import { QRScanner } from '@ionic-native/qr-scanner';
 import { StatusBar } from '@ionic-native/status-bar';
 
-import { TouchID } from '@ionic-native/touch-id';
+import { FingerprintAIO } from '@ionic-native/fingerprint-aio';
 import { Subject } from 'rxjs/Subject';
 import { AppProvider } from './providers/app/app';
 import { PersistenceProvider } from './providers/persistence/persistence';
@@ -89,6 +87,7 @@ import { ProvidersModule } from './providers/providers.module';
 import { ImageLoader, IonicImageLoader } from 'ionic-image-loader';
 import * as appTemplate from './../app-template/bitpay/appConfig.json';
 import { ActionSheetComponent } from './components/action-sheet/action-sheet';
+import { EncryptPasswordComponent } from './components/encrypt-password/encrypt-password';
 import { InfoSheetComponent } from './components/info-sheet/info-sheet';
 import { DomProviderMock } from './providers/dom/dom.mock';
 import { LoggerMock } from './providers/logger/logger.mock';
@@ -188,11 +187,7 @@ const ionicProviders = [
   { provide: File, useClass: FileMock },
   { provide: QRScanner, useClass: QRScannerMock },
   { provide: StatusBar, useClass: StatusBar },
-  { provide: TouchID, useClass: TouchIDMock },
-  {
-    provide: AndroidFingerprintAuth,
-    useClass: AndroidFingerprintAuthMock
-  },
+  { provide: FingerprintAIO, useClass: FingerprintAIOMock },
   {
     provide: NavParams,
     useClass: NavParamsMock
@@ -291,10 +286,27 @@ export class TestUtils {
       useFactory?: (...args) => any;
     }> = []
   ) {
-    return TestBed.configureTestingModule({
+    TestBed.configureTestingModule({
       imports: [...baseImports, ProvidersModule],
-      providers: [...baseProviders, ...providerOverrides]
-    });
+      providers: [...baseProviders, ...providerOverrides],
+      declarations: [
+        EncryptPasswordComponent,
+        InfoSheetComponent,
+        ActionSheetComponent
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
+    })
+      .overrideModule(BrowserDynamicTestingModule, {
+        set: {
+          entryComponents: [
+            EncryptPasswordComponent,
+            ActionSheetComponent,
+            InfoSheetComponent
+          ]
+        }
+      })
+      .compileComponents();
+    return TestBed;
   }
 
   // http://stackoverflow.com/questions/2705583/how-to-simulate-a-click-with-javascript

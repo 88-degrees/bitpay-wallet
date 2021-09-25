@@ -31,9 +31,9 @@ export class PayproProvider {
       this.onGoingProcessProvider.set('fetchingPayProOptions');
     }
     const payOpts = await bwc.getPaymentOptions(options).catch(async err => {
-      this.logger.error('PayPro Options: ERROR', JSON.stringify(err));
-      if (attempt <= 5) {
-        await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
+      this.logger.error(`PayPro Options ERR: ${err.message}`);
+      if (attempt <= 3) {
+        await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
         return this.getPayProOptions(paymentUrl, disableLoader, ++attempt);
       } else {
         if (!disableLoader) this.onGoingProcessProvider.clear();
@@ -41,23 +41,26 @@ export class PayproProvider {
       }
     });
     if (!disableLoader) this.onGoingProcessProvider.clear();
-    this.logger.info('PayPro Options: SUCCESS');
+    this.logger.info('PayPro Options: SUCCESS', JSON.stringify(payOpts));
     return payOpts;
   }
 
-  public async getPayProDetails(
-    paymentUrl,
-    coin,
-    disableLoader?: boolean,
-    attempt: number = 1
-  ): Promise<any> {
+  public async getPayProDetails(params: {
+    paymentUrl;
+    coin;
+    payload?: { address?: string };
+    disableLoader?: boolean;
+    attempt?: number;
+  }): Promise<any> {
+    let { paymentUrl, coin, payload, disableLoader, attempt = 1 } = params;
     this.logger.info('PayPro Details: try... ' + attempt);
     const bwc = this.bwcProvider.getPayProV2();
     const chain = this.currencyProvider.getChain(coin).toUpperCase();
     const options: any = {
       paymentUrl,
       chain,
-      currency: coin.toUpperCase()
+      currency: coin.toUpperCase(),
+      payload
     };
     if (!disableLoader) {
       this.onGoingProcessProvider.set('fetchingPayPro');
@@ -66,22 +69,23 @@ export class PayproProvider {
     const payDetails = await bwc
       .selectPaymentOption(options)
       .catch(async err => {
-        this.logger.error('PayPro Details: ERROR', JSON.stringify(err));
-        if (attempt <= 5) {
-          await new Promise(resolve => setTimeout(resolve, 3000 * attempt));
-          return this.getPayProDetails(
+        this.logger.error(`PayPro Details ERR: ${err.message}`);
+        if (attempt <= 3) {
+          await new Promise(resolve => setTimeout(resolve, 5000 * attempt));
+          return this.getPayProDetails({
             paymentUrl,
             coin,
+            payload,
             disableLoader,
-            ++attempt
-          );
+            attempt: ++attempt
+          });
         } else {
           if (!disableLoader) this.onGoingProcessProvider.clear();
           throw err;
         }
       });
     if (!disableLoader) this.onGoingProcessProvider.clear();
-    this.logger.info('PayPro Details: SUCCESS');
+    this.logger.info('PayPro Details: SUCCESS', JSON.stringify(payDetails));
     return payDetails;
   }
 }

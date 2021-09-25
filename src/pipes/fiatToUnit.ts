@@ -1,8 +1,8 @@
-import { DecimalPipe } from '@angular/common';
 import { Pipe, PipeTransform } from '@angular/core';
 import { ConfigProvider } from '../providers/config/config';
-import { Coin, CurrencyProvider } from '../providers/currency/currency';
 import { RateProvider } from '../providers/rate/rate';
+import { TxFormatProvider } from '../providers/tx-format/tx-format';
+
 @Pipe({
   name: 'fiatToUnit',
   pure: false
@@ -12,24 +12,16 @@ export class FiatToUnitPipe implements PipeTransform {
 
   constructor(
     private configProvider: ConfigProvider,
-    private currencyProvider: CurrencyProvider,
     private rateProvider: RateProvider,
-    private decimalPipe: DecimalPipe
+    private txFormatProvider: TxFormatProvider
   ) {
     this.walletSettings = this.configProvider.get().wallet.settings;
   }
-  transform(amount: number, coin: Coin, alternative?: string) {
+  transform(amount: number, coin: string, alternative?: string) {
     alternative = alternative
       ? alternative
       : this.walletSettings.alternativeIsoCode;
     let amount_ = this.rateProvider.fromFiat(amount, alternative, coin);
-    return (
-      this.decimalPipe.transform(
-        amount_ / this.currencyProvider.getPrecision(coin).unitToSatoshi || 0,
-        '1.2-8'
-      ) +
-      ' ' +
-      coin.toUpperCase()
-    );
+    return this.txFormatProvider.formatAmountStr(coin, amount_, true);
   }
 }

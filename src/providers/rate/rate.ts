@@ -1,52 +1,112 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import * as _ from 'lodash';
-import env from '../../environments';
+import * as moment from 'moment';
+import { ConfigProvider } from '../../providers/config/config';
 import { CoinsMap, CurrencyProvider } from '../../providers/currency/currency';
 import { Logger } from '../../providers/logger/logger';
 
+const EXPIRATION_TIME_MS = 5 * 60 * 1000; // 5min
+
+export interface ExchangeRate {
+  rate: number;
+  ts: number;
+}
+
+export enum DateRanges {
+  Day = 1,
+  Week = 7,
+  Month = 30
+}
+
+export interface HistoricalRates {
+  btc: ExchangeRate[];
+  bch: ExchangeRate[];
+}
+
 @Injectable()
 export class RateProvider {
-  private alternatives;
+  public alternatives;
   private rates = {} as CoinsMap<{}>;
   private ratesAvailable = {} as CoinsMap<boolean>;
   private rateServiceUrl = {} as CoinsMap<string>;
 
-  private fiatRateAPIUrl = 'https://bws.bitpay.com/bws/api/v1/fiatrates';
+  private bwsURL: string;
+  private ratesCache: any;
 
   constructor(
     private currencyProvider: CurrencyProvider,
     private http: HttpClient,
-    private logger: Logger
+    private logger: Logger,
+    private configProvider: ConfigProvider
   ) {
     this.logger.debug('RateProvider initialized');
     this.alternatives = {};
     for (const coin of this.currencyProvider.getAvailableCoins()) {
-      this.rateServiceUrl[coin] = env.ratesAPI[coin];
+      this.rateServiceUrl[coin] = this.currencyProvider.getRatesApi()[coin];
       this.rates[coin] = { USD: 1 };
       this.ratesAvailable[coin] = false;
-      this.updateRates(coin);
     }
+
+    const defaults = this.configProvider.getDefaults();
+    this.bwsURL = defaults.bws.url;
+    this.ratesCache = {
+      1: [],
+      7: [],
+      30: []
+    };
+    this.updateRates();
   }
 
-  public updateRates(chain: string): Promise<any> {
-    return new Promise((resolve, reject) => {
-      this.getCoin(chain)
+  public updateRates(chain?: string): Promise<any> {
+    if (chain) {
+      if (!this.currencyProvider.getRatesApi()[chain]) return Promise.resolve();
+      return this.getCoin(chain)
         .then(dataCoin => {
           _.each(dataCoin, currency => {
             if (currency && currency.code && currency.rate) {
               this.rates[chain][currency.code] = currency.rate;
-              if (currency.name)
-                this.alternatives[currency.code] = { name: currency.name };
             }
           });
-          this.ratesAvailable[chain] = true;
-          resolve();
+          return Promise.resolve();
         })
         .catch(errorCoin => {
           this.logger.error(errorCoin);
-          reject(errorCoin);
+          return Promise.resolve();
         });
+    } else {
+      return this.getRates()
+        .then(res => {
+          _.map(res, (rates, coin) => {
+            const coinRates = {};
+            _.each(rates, r => {
+              if (r.code && r.rate) {
+                const rate = { [r.code]: r.rate };
+                Object.assign(coinRates, rate);
+              }
+
+              // set alternative currency list
+              if (r.code && r.name) {
+                this.alternatives[r.code] = { name: r.name };
+              }
+            });
+            this.rates[coin] = !_.isEmpty(coinRates) ? coinRates : { USD: 1 };
+            this.ratesAvailable[coin] = true;
+          });
+          return Promise.resolve();
+        })
+        .catch(err => {
+          this.logger.error(err);
+          return Promise.reject(err);
+        });
+    }
+  }
+
+  public getRates(): Promise<any> {
+    return new Promise(resolve => {
+      this.http.get(`${this.bwsURL}/v3/fiatrates/`).subscribe(res => {
+        resolve(res);
+      });
     });
   }
 
@@ -62,6 +122,7 @@ export class RateProvider {
     const customRate =
       opts && opts.rates && opts.rates[chain] && opts.rates[chain][code];
     if (customRate) return customRate;
+    if (!this.rates[chain]) return 0;
     if (this.rates[chain][code]) return this.rates[chain][code];
     if (
       !this.rates[chain][code] &&
@@ -92,6 +153,10 @@ export class RateProvider {
 
   public isCoinAvailable(chain: string) {
     return this.ratesAvailable[chain];
+  }
+
+  public isAltCurrencyAvailable(currency: string) {
+    return this.alternatives[currency];
   }
 
   public toFiat(
@@ -156,11 +221,50 @@ export class RateProvider {
     ts: string
   ): Promise<any> {
     return new Promise(resolve => {
-      const url =
-        this.fiatRateAPIUrl + '/' + currency + '?coin=' + coin + '&ts=' + ts;
+      const url = `${this.bwsURL}/v1/fiatrates/${currency}?coin=${coin}&ts=${ts}`;
       this.http.get(url).subscribe(data => {
         resolve(data);
       });
     });
+  }
+
+  public getLastDayRates(): Promise<HistoricalRates> {
+    const fiatIsoCode =
+      this.configProvider.get().wallet.settings.alternativeIsoCode || 'USD';
+
+    return this.fetchHistoricalRates(fiatIsoCode, DateRanges.Day).then(x => {
+      let ret = {};
+      _.map(x, (v, k) => {
+        ret[k] = _.last(v).rate;
+      });
+      return ret as HistoricalRates;
+    });
+  }
+
+  public fetchHistoricalRates(
+    fiatIsoCode: string,
+    dateRange: DateRanges = DateRanges.Day
+  ): Promise<HistoricalRates> {
+    const firstDateTs =
+      moment().subtract(dateRange, 'days').startOf('hour').unix() * 1000;
+
+    const now = Date.now();
+    if (
+      _.isEmpty(this.ratesCache[dateRange].data) ||
+      this.ratesCache[dateRange].expiration < now
+    ) {
+      this.logger.debug(
+        `Refreshing Exchange rates for ${fiatIsoCode} period ${dateRange}`
+      );
+
+      // This pulls ALL coins in one query
+      const req = this.http.get<ExchangeRate[]>(
+        `${this.bwsURL}/v2/fiatrates/${fiatIsoCode}?ts=${firstDateTs}`
+      );
+
+      this.ratesCache[dateRange].data = req.first().toPromise();
+      this.ratesCache[dateRange].expiration = now + EXPIRATION_TIME_MS;
+    }
+    return this.ratesCache[dateRange].data;
   }
 }

@@ -3,9 +3,11 @@ import { TranslateService } from '@ngx-translate/core';
 import { NavController, NavParams } from 'ionic-angular';
 
 // providers
+import { ConfigProvider } from '../../../../providers/config/config';
 import { KeyProvider } from '../../../../providers/key/key';
 import { Logger } from '../../../../providers/logger/logger';
 import { OnGoingProcessProvider } from '../../../../providers/on-going-process/on-going-process';
+import { PersistenceProvider } from '../../../../providers/persistence/persistence';
 import { PopupProvider } from '../../../../providers/popup/popup';
 import { ProfileProvider } from '../../../../providers/profile/profile';
 import { PushNotificationsProvider } from '../../../../providers/push-notifications/push-notifications';
@@ -27,6 +29,8 @@ export class KeyDeletePage {
     private logger: Logger,
     private translate: TranslateService,
     private keyProvider: KeyProvider,
+    private persistanceProvider: PersistenceProvider,
+    private configProvider: ConfigProvider,
     private pushNotificationsProvider: PushNotificationsProvider
   ) {}
 
@@ -62,13 +66,14 @@ export class KeyDeletePage {
       .then(async () => {
         this.onGoingProcessProvider.clear();
 
-        wallets.forEach(wallet => {
-          this.pushNotificationsProvider.unsubscribe(wallet);
-        });
-
         const keyInUse = this.profileProvider.isKeyInUse(this.keyId);
 
         if (!keyInUse) {
+          wallets.forEach(wallet => {
+            this.pushNotificationsProvider.unsubscribe(wallet);
+            this.persistanceProvider.removeLastKnownBalance(wallet.id);
+            this.configProvider.removeBwsFor(wallet.credentials.walletId);
+          });
           this.keyProvider.removeKey(this.keyId);
           this.goHome();
         } else {

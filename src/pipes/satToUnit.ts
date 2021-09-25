@@ -1,22 +1,13 @@
-import { DecimalPipe } from '@angular/common';
 import { Pipe, PipeTransform } from '@angular/core';
-import { Coin, CurrencyProvider } from '../providers/currency/currency';
+import { TxFormatProvider } from '../providers/tx-format/tx-format';
 
 @Pipe({
   name: 'satToUnit',
   pure: false
 })
 export class SatToUnitPipe implements PipeTransform {
-  constructor(
-    private decimalPipe: DecimalPipe,
-    private currencyProvider: CurrencyProvider
-  ) {}
-  transform(amount: number, coin: Coin) {
-    const { unitToSatoshi } = this.currencyProvider.getPrecision(coin);
-    return (
-      this.decimalPipe.transform(amount / unitToSatoshi, '1.2-6') +
-      ' ' +
-      coin.toUpperCase()
-    );
+  constructor(private txFormatProvider: TxFormatProvider) {}
+  transform(amount: number, coin: string) {
+    return this.txFormatProvider.formatAmountStr(coin, amount);
   }
 }

@@ -1,21 +1,17 @@
 import { Component, ViewChild } from '@angular/core';
-import { TranslateService } from '@ngx-translate/core';
-import {
-  ModalController,
-  NavController,
-  NavParams,
-  Slides
-} from 'ionic-angular';
+import { Events, NavController, NavParams, Slides } from 'ionic-angular';
 import * as _ from 'lodash';
 
 // pages
-import { FinishModalPage } from '../../finish/finish';
+import { AddFundsPage } from '../../onboarding/add-funds/add-funds';
+import { DisclaimerPage } from '../../onboarding/disclaimer/disclaimer';
 
 // providers
 import { ActionSheetProvider } from '../../../providers/action-sheet/action-sheet';
 import { BwcProvider } from '../../../providers/bwc/bwc';
 import { KeyProvider } from '../../../providers/key/key';
 import { Logger } from '../../../providers/logger/logger';
+import { PersistenceProvider } from '../../../providers/persistence/persistence';
 import { ProfileProvider } from '../../../providers/profile/profile';
 
 @Component({
@@ -39,15 +35,15 @@ export class BackupGamePage {
   public keyId: string;
 
   constructor(
-    private modalCtrl: ModalController,
     private navCtrl: NavController,
     private navParams: NavParams,
     private logger: Logger,
     private profileProvider: ProfileProvider,
     private bwcProvider: BwcProvider,
     private actionSheetProvider: ActionSheetProvider,
-    private translate: TranslateService,
-    private keyProvider: KeyProvider
+    private keyProvider: KeyProvider,
+    private persistenceProvider: PersistenceProvider,
+    private events: Events
   ) {
     this.mnemonicWords = this.navParams.data.words;
     this.keys = this.navParams.data.keys;
@@ -152,7 +148,9 @@ export class BackupGamePage {
       let key;
 
       try {
-        key = keyClient.fromMnemonic(customSentence, {
+        key = new keyClient({
+          seedType: 'mnemonic',
+          seedData: customSentence,
           useLegacyCoinType: false,
           useLegacyPurpose: false,
           passphrase: password
@@ -162,7 +160,7 @@ export class BackupGamePage {
         return;
       }
 
-      if (key.xPrivKey != this.keys.xPrivKey) {
+      if (key.get().xPrivKey != this.keys.xPrivKey) {
         this.showErrorInfoSheet('Private key mismatch');
         return;
       }
@@ -176,32 +174,35 @@ export class BackupGamePage {
     wallets.forEach(w => {
       this.profileProvider.setWalletBackup(w.credentials.walletId);
     });
-    this.showSuccessModal();
+    this.showSuccessInfoSheet();
   }
 
-  private showSuccessModal() {
-    const finishText = this.translate.instant(
-      'Your recovery phrase is verified'
+  private showSuccessInfoSheet() {
+    const infoSheet = this.actionSheetProvider.createInfoSheet(
+      'correct-recovery-prhase'
     );
-    const finishComment = this.translate.instant(
-      'Be sure to store your recovery phrase in a safe and secure place'
-    );
-    const cssClass = 'primary';
-    const params = { finishText, finishComment, cssClass };
-    const modal = this.modalCtrl.create(FinishModalPage, params, {
-      showBackdrop: true,
-      enableBackdropDismiss: false,
-      cssClass: 'finish-modal'
-    });
-    modal.present();
-    modal.onDidDismiss(() => {
-      this.navCtrl.popToRoot();
+    infoSheet.present();
+    infoSheet.onDidDismiss(() => {
+      if (this.navParams.data.isOnboardingFlow) {
+        this.persistenceProvider
+          .getCopayDisclaimerFlag()
+          .then(disclaimerAgreed => {
+            disclaimerAgreed
+              ? this.navCtrl.push(AddFundsPage, { keyId: this.keyId })
+              : this.navCtrl.push(DisclaimerPage, { keyId: this.keyId });
+          });
+      } else
+        this.navCtrl.popToRoot().then(() => {
+          this.events.publish('Local/FetchWallets');
+        });
     });
   }
 
   private showErrorInfoSheet(err) {
     this.logger.warn('Failed to verify backup: ', err);
-    const infoSheet = this.actionSheetProvider.createInfoSheet('backup-failed');
+    const infoSheet = this.actionSheetProvider.createInfoSheet(
+      'incorrect-recovery-prhase'
+    );
     infoSheet.present();
     infoSheet.onDidDismiss(() => {
       this.clear();

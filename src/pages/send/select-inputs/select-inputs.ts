@@ -1,4 +1,3 @@
-import { DecimalPipe } from '@angular/common';
 import { Component } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import {
@@ -25,9 +24,9 @@ import { CurrencyProvider } from '../../../providers/currency/currency';
 import { ErrorsProvider } from '../../../providers/errors/errors';
 import { IncomingDataProvider } from '../../../providers/incoming-data/incoming-data';
 import { Logger } from '../../../providers/logger/logger';
+import { PlatformProvider } from '../../../providers/platform/platform';
 import { TxFormatProvider } from '../../../providers/tx-format/tx-format';
 import { WalletProvider } from '../../../providers/wallet/wallet';
-
 @Component({
   selector: 'page-select-inputs',
   templateUrl: 'select-inputs.html'
@@ -41,15 +40,21 @@ export class SelectInputsPage {
   public recipient;
   public inputs: any[] = [];
   public totalAmount: number = 0;
+  public isCordova: boolean;
+  public reverse: boolean;
 
   private selectedInputs = [];
   private validDataTypeMap: string[] = [
     'BitcoinAddress',
     'BitcoinCashAddress',
     'EthereumAddress',
+    'DogecoinAddress',
+    'LitecoinAddress',
     'EthereumUri',
     'BitcoinUri',
-    'BitcoinCashUri'
+    'BitcoinCashUri',
+    'DogecoinUri',
+    'LitecoinUri'
   ];
   constructor(
     private navCtrl: NavController,
@@ -66,14 +71,18 @@ export class SelectInputsPage {
     private events: Events,
     private modalCtrl: ModalController,
     private txFormatProvider: TxFormatProvider,
-    private decimalPipe: DecimalPipe,
     private walletProvider: WalletProvider,
-    private configProvider: ConfigProvider
+    private configProvider: ConfigProvider,
+    private platformProvider: PlatformProvider
   ) {
     this.bitcore = {
       btc: this.bwcProvider.getBitcore(),
-      bch: this.bwcProvider.getBitcoreCash()
+      bch: this.bwcProvider.getBitcoreCash(),
+      doge: this.bwcProvider.getBitcoreDoge(),
+      ltc: this.bwcProvider.getBitcoreLtc()
     };
+    this.reverse = false;
+    this.isCordova = this.platformProvider.isCordova;
     this.wallet = this.navParams.data.wallet;
     this.events.subscribe(
       'Local/AddressScanSelectInputs',
@@ -119,12 +128,17 @@ export class SelectInputsPage {
     });
   }
 
+  public reverseInputs() {
+    this.reverse = !this.reverse;
+    this.inputs.reverse();
+  }
+
   public getCoinName(coin): string {
     return this.currencyProvider.getCoinName(coin);
   }
 
   public openScanner(): void {
-    this.navCtrl.push(ScanPage, { fromMultiSend: true });
+    this.navCtrl.push(ScanPage, { fromSelectInputs: true });
   }
 
   public processInput(): void {
@@ -233,13 +247,21 @@ export class SelectInputsPage {
       item.altAmountStr = altAmountStr;
       item.fiatAmount = data.fiatAmount;
       item.fiatCode = data.fiatCode;
-      item.amountToShow = this.decimalPipe.transform(
-        data.amount /
-          this.currencyProvider.getPrecision(this.wallet.coin).unitToSatoshi,
-        '1.2-6'
+      item.amountToShow = this.txFormatProvider.formatAmount(
+        this.wallet.coin,
+        +data.amount
       );
       this.recipient = item;
     });
+  }
+
+  public clearAmount(item): void {
+    item.amount = null;
+    item.altAmountStr = null;
+    item.fiatAmount = null;
+    item.fiatCode = null;
+    item.amountToShow = null;
+    this.recipient = item;
   }
 
   public cleanSearch(): void {
@@ -313,12 +335,8 @@ export class SelectInputsPage {
   }
 
   public addRecipient(recipient): void {
-    let amountToShow = +recipient.amount
-      ? this.decimalPipe.transform(
-          +recipient.amount /
-            this.currencyProvider.getPrecision(this.wallet.coin).unitToSatoshi,
-          '1.2-6'
-        )
+    let amountToShow: string = +recipient.amount
+      ? this.txFormatProvider.formatAmount(this.wallet.coin, +recipient.amount)
       : null;
 
     let altAmountStr = this.txFormatProvider.formatAlternativeStr(

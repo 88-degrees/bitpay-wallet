@@ -6,6 +6,7 @@ import { Logger } from '../../../providers/logger/logger';
 // providers
 import { AnalyticsProvider } from '../../../providers/analytics/analytics';
 import { AppProvider } from '../../../providers/app/app';
+import { ExternalLinkProvider } from '../../../providers/external-link/external-link';
 import { PersistenceProvider } from '../../../providers/persistence/persistence';
 import { ReplaceParametersProvider } from '../../../providers/replace-parameters/replace-parameters';
 
@@ -21,6 +22,7 @@ export class FeedbackCardPage {
   public button_title: string;
   public feedbackCardTitle: string;
   public isShowRateCard: boolean;
+  public surveyCardShown: boolean;
 
   constructor(
     private appProvider: AppProvider,
@@ -29,10 +31,12 @@ export class FeedbackCardPage {
     private persistenceProvider: PersistenceProvider,
     private analyticsProvider: AnalyticsProvider,
     private translate: TranslateService,
-    private replaceParametersProvider: ReplaceParametersProvider
+    private replaceParametersProvider: ReplaceParametersProvider,
+    private externalLinkProvider: ExternalLinkProvider
   ) {
     this.score = 0;
     this.isShowRateCard = false;
+    this.surveyCardShown = false;
   }
 
   public setShowRateCard(value) {
@@ -47,6 +51,10 @@ export class FeedbackCardPage {
     }
   }
 
+  public setShowSurveyCard(value: boolean = false) {
+    this.surveyCardShown = value;
+  }
+
   public hideCard(): void {
     this.isShowRateCard = false;
     this.logger.debug('Feedback card dismissed.');
@@ -55,6 +63,21 @@ export class FeedbackCardPage {
       feedbackInfo.sent = true;
       this.persistenceProvider.setFeedbackInfo(feedbackInfo);
     });
+  }
+
+  public hideSurvey(): void {
+    this.surveyCardShown = false;
+    this.logger.debug('Survey card dismissed.');
+    this.persistenceProvider.getFeedbackInfo().then(info => {
+      let feedbackInfo = info;
+      feedbackInfo.surveyTaken = true;
+      this.persistenceProvider.setFeedbackInfo(feedbackInfo);
+    });
+  }
+
+  public takeSurvey(): void {
+    this.externalLinkProvider.open('https://payux.typeform.com/to/DWIC0Kky');
+    this.hideSurvey();
   }
 
   public setScore(score: number) {
@@ -77,6 +100,18 @@ export class FeedbackCardPage {
     this.analyticsProvider.logEvent('feedback_card_app_sentiment', {
       happinessLevel: this.score
     });
+    if (this.score == 1) {
+      const url = 'https://payux.typeform.com/to/qYXqqa5q';
+      this.externalLinkProvider.open(url);
+      return;
+    }
+
+    if (this.score == 2) {
+      const url = 'https://payux.typeform.com/to/MF01BBKt';
+      this.externalLinkProvider.open(url);
+      return;
+    }
+
     this.navCtrl.push(SendFeedbackPage, {
       score: this.score,
       fromCard: true

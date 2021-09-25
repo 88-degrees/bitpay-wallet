@@ -1,21 +1,31 @@
-import { Component, Input } from '@angular/core';
-import { ModalController } from 'ionic-angular';
-import { TimeProvider } from '../../../providers/time/time';
+import { Component, Input, OnInit } from '@angular/core';
+import { ModalController, NavController } from 'ionic-angular';
 
+// Providers
+import { Contact } from '../../../providers/address-book/address-book';
+import { TimeProvider } from '../../../providers/time/time';
 import { TxpDetailsPage } from '../../txp-details/txp-details';
+
+// Pages
+import { ConfirmPage } from '../../send/confirm/confirm';
+
+import _ from 'lodash';
 
 @Component({
   selector: 'page-txp',
   templateUrl: 'txp.html'
 })
-export class TxpPage {
+export class TxpPage implements OnInit {
   private _tx;
-  private _addressbook;
+  private _addressbook: Contact[];
   private _noOpenModal: boolean;
+
+  public contactName: string;
 
   constructor(
     private timeProvider: TimeProvider,
-    private modalCtrl: ModalController
+    private modalCtrl: ModalController,
+    private navCtrl: NavController
   ) {}
 
   @Input()
@@ -45,6 +55,10 @@ export class TxpPage {
     return this._noOpenModal;
   }
 
+  ngOnInit() {
+    this.contactName = this.getContact(this._tx.toAddress, this._tx.coin);
+  }
+
   public createdWithinPastDay(time) {
     return this.timeProvider.withinPastDay(time);
   }
@@ -57,5 +71,19 @@ export class TxpPage {
       { showBackdrop: false, enableBackdropDismiss: false }
     );
     modal.present();
+    modal.onDidDismiss(opts => {
+      if (opts && opts.multisigContractAddress) {
+        this.navCtrl.push(ConfirmPage, opts);
+      }
+    });
+  }
+
+  private getContact(addr: string, coin: string) {
+    const existsContact = _.find(
+      this.addressbook,
+      c => c.address === addr && c.coin === coin
+    );
+    if (existsContact) return existsContact.name;
+    return undefined;
   }
 }

@@ -12,18 +12,18 @@
             <div class="amount">
               {{btx.amountValueStr}} {{btx.amountUnitStr | uppercase}}
             </div>
-            <div class="alternative">
+            <div *ngIf="!currencyProvider.isCustomERCToken(wallet.coin)" class="alternative">
               <span *ngIf="!btx.fiatRateStr">...</span>
-              <span *ngIf="btx.fiatRateStr">{{btx.fiatRateStr}}</span>
+              <span *ngIf="btx.fiatRateStr">{{ wallet?.network !== 'testnet' ? btx.fiatRateStr : ('Test Only - No Value' | translate)}}</span>
             </div>
           </div>
           <div class="sending-label" *ngIf="btx.amount === 0 && wallet.coin === 'eth'">
-            <span>{{'Fee for token transfer' | translate}}</span>
+            <span>{{'Interaction with contract' | translate}}</span>
           </div>
         </div>
       </ion-item>
 
-      <label-tip class="low-fees" type="warn" *ngIf="btx.action == 'received' && btx.lowAmount">
+      <label-tip class="low-fees" type="warn" *ngIf="wallet.coin === 'btc' && btx.action == 'received' && btx.lowAmount">
         <span label-tip-title translate>Amount Too Low To Spend</span>
         <div label-tip-body translate>
           This transaction amount is too small compared to current Bitcoin network fees. Spending these funds will need a Bitcoin network fee cost comparable to the funds itself.
@@ -48,7 +48,7 @@
           <div class="summary-item-detail">
             {{btx.feeStr}}
           </div>
-          <div class="secondary-note fee-details">
+          <div class="secondary-note fee-details" *ngIf="wallet?.network !== 'testnet'">
             {{btx.feeFiatStr}}
             <span *ngIf="btx.feeRateStr">
               &middot;
@@ -58,6 +58,9 @@
                 </span>
               </span>
             </span>
+          </div>
+          <div class="secondary-note fee-details" *ngIf="wallet?.network === 'testnet'">
+            {{ 'Test Only - No Value' | translate }}
           </div>
         </ion-note>
       </ion-item>
@@ -71,7 +74,7 @@
 
       <div class="line-divider" *ngIf="btx.action === 'sent'"></div>
 
-      <page-multiple-outputs *ngIf="btx.action === 'sent'" [tx]="btx"></page-multiple-outputs>
+      <page-multiple-outputs *ngIf="btx.action === 'sent'" [tx]="btx" (openBlockChainEvent)="viewOnBlockchain()"></page-multiple-outputs>
 
       <div class="line-divider" *ngIf="btx.creatorName && isShared"></div>
 
@@ -98,6 +101,21 @@
           <span class="note-container ellipsis summary-item-detail">
             <time>{{ (btx.ts || btx.createdOn || btx.time) * 1000 | amDateFormat:'MM/DD/YYYY hh:mm a'}}</time>
           </span>
+        </ion-note>
+      </ion-item>
+
+      <div class="line-divider" *ngIf="btx.nonce"></div>
+
+      <ion-item *ngIf="btx.nonce">
+        <ion-label>
+          <div class="summary-item">
+            <span translate>Nonce</span>
+          </div>
+        </ion-label>
+        <ion-note item-end>
+          <div class="summary-item-detail">
+            {{btx.nonce}}
+          </div>
         </ion-note>
       </ion-item>
 
@@ -165,7 +183,7 @@
 
       <div class="line-divider" *ngIf="actionList && actionList[0]"></div>
 
-      <div *ngIf="actionList && actionList[0]">
+      <div *ngIf="actionList && actionList[0] && !wallet.credentials.multisigEthInfo">
         <ion-item detail-none>
           <div>{{'Timeline' | translate}}</div>
         </ion-item>

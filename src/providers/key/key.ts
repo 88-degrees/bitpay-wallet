@@ -26,17 +26,31 @@ export class KeyProvider {
   }
 
   public load(): Promise<any> {
+    this.logger.debug('loading keys');
     return this.persistenceProvider.getKeys().then(async keys => {
+      if (!keys) this.logger.debug('no keys found');
       this.keys = [];
       keys = keys ? keys : [];
+      this.logger.debug(`typeof keys: ${typeof keys}`);
       if (typeof keys === 'string') {
+        this.logger.debug('typeof keys = string. Trying to parse.');
         try {
           keys = JSON.parse(keys);
         } catch (_) {
           this.logger.warn('Could not parse');
         }
       }
-      keys.forEach(k => this.keys.push(this.Key.fromObj(k)));
+
+      this.logger.debug(`keys length: ${keys.length}`);
+      keys.forEach(k => {
+        this.logger.debug(`storage keyid: ${k.id}`);
+        this.keys.push(
+          new this.Key({
+            seedType: 'object',
+            seedData: k
+          })
+        );
+      });
       return Promise.resolve();
     });
   }
@@ -59,14 +73,32 @@ export class KeyProvider {
 
   public addKey(keyToAdd, replaceKey?: boolean): Promise<any> {
     if (!keyToAdd) return Promise.resolve();
+
+    const keyObject = keyToAdd.toObj();
     const keyIndex = this.keys.findIndex(k => this.isMatch(keyToAdd, k));
 
     if (keyIndex >= 0) {
       // only for encrypt/decrypt
-      if (replaceKey) this.keys.splice(keyIndex, 1, this.Key.fromObj(keyToAdd));
-      else return Promise.resolve();
+      if (replaceKey)
+        this.keys.splice(
+          keyIndex,
+          1,
+          new this.Key({
+            seedType: 'object',
+            seedData: keyObject
+          })
+        );
+      else {
+        this.logger.debug('NO adding key (duplicate): ', keyToAdd.id);
+        return Promise.resolve();
+      }
     } else {
-      this.keys.push(this.Key.fromObj(keyToAdd));
+      this.keys.push(
+        new this.Key({
+          seedType: 'object',
+          seedData: keyObject
+        })
+      );
     }
     this.isDirty = true;
     return this.storeKeysIfDirty();
@@ -74,8 +106,14 @@ export class KeyProvider {
 
   public addKeys(keysToAdd: any[]): Promise<any> {
     keysToAdd.forEach(keyToAdd => {
-      if (!this.keys.find(k => this.isMatch(keyToAdd, k))) {
-        this.keys.push(this.Key.fromObj(keyToAdd));
+      const keyObject = keyToAdd.toObj();
+      if (!this.keys.find(k => this.isMatch(keyObject, k))) {
+        this.keys.push(
+          new this.Key({
+            seedType: 'object',
+            seedData: keyObject
+          })
+        );
         this.isDirty = true;
       } else {
         this.logger.warn('Key already added');
@@ -146,39 +184,6 @@ export class KeyProvider {
     });
   }
 
-  public encryptNewKey(key): Promise<any> {
-    let title = this.translate.instant(
-      'Enter a password to encrypt your wallet'
-    );
-    const warnMsg = this.translate.instant(
-      'This password is only for this device, and it cannot be recovered. To avoid losing funds, write your password down.'
-    );
-    return this.askPassword(warnMsg, title).then((password: string) => {
-      if (!password) {
-        return this.showWarningNoEncrypt().then(res => {
-          if (res) return Promise.resolve();
-          return this.encryptNewKey(key);
-        });
-      } else {
-        title = this.translate.instant(
-          'Enter your encrypt password again to confirm'
-        );
-        return this.askPassword(warnMsg, title).then((password2: string) => {
-          if (!password2 || password != password2) {
-            return this.encryptNewKey(key);
-          } else {
-            try {
-              this.encryptPrivateKey(key, password);
-            } catch (error) {
-              return Promise.reject(error);
-            }
-            return Promise.resolve(password);
-          }
-        });
-      }
-    });
-  }
-
   public showWarningNoEncrypt(): Promise<any> {
     const title = this.translate.instant('Are you sure?');
     const msg = this.translate.instant(
@@ -239,14 +244,16 @@ export class KeyProvider {
   }
 
   public isDeletedSeed(keyId: string): boolean {
-    if (!keyId) return true;
     const key = this.getKey(keyId);
-    return !key || (!key.mnemonic && !key.mnemonicEncrypted);
+    if (!key) return true;
+
+    const keyObj = key.toObj();
+    return !keyObj.mnemonic && !keyObj.mnemonicEncrypted;
   }
 
   public mnemonicHasPassphrase(keyId: string): boolean {
     if (!keyId) return false;
-    const key = this.getKey(keyId);
+    const key = this.getKey(keyId).toObj();
     return key.mnemonicHasPassphrase;
   }
 
@@ -275,7 +282,10 @@ export class KeyProvider {
     }
 
     const key = this.getKey(keyId);
-
+    if (!key) {
+      this.logger.warn(`Can't sign. The  key ${keyId} was no found.`);
+      throw new Error(`Key ${keyId} not found on this device`);
+    }
     return key.sign(rootPath, txp, password);
   }
 

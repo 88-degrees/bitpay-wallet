@@ -6,7 +6,6 @@ import {
   NavParams,
   ViewController
 } from 'ionic-angular';
-import { DecimalPipe } from '../../../node_modules/@angular/common';
 import { Logger } from '../../providers/logger/logger';
 
 // providers
@@ -27,7 +26,6 @@ import { WalletProvider } from '../../providers/wallet/wallet';
 import { FinishModalPage } from '../finish/finish';
 
 import * as _ from 'lodash';
-
 @Component({
   selector: 'page-txp-details',
   templateUrl: 'txp-details.html'
@@ -55,6 +53,7 @@ export class TxpDetailsPage {
   public isCordova: boolean;
 
   private countDown;
+  private executionPending: boolean;
 
   constructor(
     private navParams: NavParams,
@@ -72,7 +71,6 @@ export class TxpDetailsPage {
     private txFormatProvider: TxFormatProvider,
     private translate: TranslateService,
     private modalCtrl: ModalController,
-    private decimalPipe: DecimalPipe,
     private payproProvider: PayproProvider,
     private bwcErrorProvider: BwcErrorProvider,
     private errorsProvider: ErrorsProvider
@@ -120,10 +118,9 @@ export class TxpDetailsPage {
     this.checkPaypro();
     this.applyButtonText();
 
-    this.amount = this.decimalPipe.transform(
-      this.tx.amount /
-        this.currencyProvider.getPrecision(this.wallet.coin).unitToSatoshi,
-      '1.2-6'
+    this.amount = this.txFormatProvider.formatAmount(
+      this.wallet.coin,
+      this.tx.amount
     );
   }
 
@@ -135,18 +132,14 @@ export class TxpDetailsPage {
     this.events.unsubscribe('bwsEvent', this.bwsEventHandler);
   }
 
-  private bwsEventHandler: any = (walletId: string, type: string) => {
+  private bwsEventHandler: any = data => {
     _.each(
-      [
-        'TxProposalRejectedBy',
-        'TxProposalAcceptedBy',
-        'transactionProposalRemoved',
-        'TxProposalRemoved',
-        'NewOutgoingTx',
-        'UpdateTx'
-      ],
+      ['TxProposalRejectedBy', 'TxProposalAcceptedBy', 'TxProposalRemoved'],
       (eventName: string) => {
-        if (walletId == this.wallet.id && type == eventName) {
+        if (
+          data.walletId == this.wallet.id &&
+          data.notification_type == eventName
+        ) {
           this.updateTxInfo(eventName);
         }
       }
@@ -165,7 +158,7 @@ export class TxpDetailsPage {
       this.tx.feeRateStr =
         ((this.tx.fee / (this.tx.amount + this.tx.fee)) * 100).toFixed(2) + '%';
     }
-    const feeOpts = this.feeProvider.getFeeOpts();
+    const feeOpts = this.feeProvider.getFeeOpts(this.wallet.coin);
     this.tx.feeLevelStr = feeOpts[this.tx.feeLevel];
   }
 
@@ -176,7 +169,9 @@ export class TxpDetailsPage {
       }).length ==
       this.tx.requiredSignatures - 1;
 
-    if (lastSigner) {
+    if (this.isShared && this.tx.coin === 'eth') {
+      this.buttonText = this.translate.instant('Continue');
+    } else if (lastSigner) {
       this.buttonText = this.isCordova
         ? this.translate.instant('Slide to send')
         : this.translate.instant('Click to send');
@@ -196,6 +191,7 @@ export class TxpDetailsPage {
 
     var actionDescriptions = {
       created: this.translate.instant('Proposal Created'),
+      failed: this.translate.instant('Execution Failed'),
       accept: this.translate.instant('Accepted'),
       reject: this.translate.instant('Rejected'),
       broadcasted: this.translate.instant('Broadcasted')
@@ -224,19 +220,41 @@ export class TxpDetailsPage {
 
   private checkPaypro(): void {
     if (this.tx.payProUrl) {
-      const disableLoader = true;
-      this.payproProvider
-        .getPayProDetails(this.tx.payProUrl, this.tx.coin, disableLoader)
-        .then(payProDetails => {
-          this.tx.paypro = payProDetails;
-          this.paymentTimeControl(this.tx.paypro.expires);
+      this.walletProvider
+        .getAddress(this.wallet, false)
+        .then(address => {
+          const payload = {
+            address
+          };
+          const disableLoader = true;
+          this.payproProvider
+            .getPayProDetails({
+              paymentUrl: this.tx.payProUrl,
+              coin: this.tx.coin,
+              payload,
+              disableLoader
+            })
+            .then(payProDetails => {
+              this.tx.paypro = payProDetails;
+              this.paymentTimeControl(this.tx.paypro.expires);
+            })
+            .catch(err => {
+              this.logger.warn(
+                'Error fetching this invoice: ',
+                this.bwcErrorProvider.msg(err)
+              );
+              this.paymentExpired = true;
+              this.showErrorInfoSheet(
+                this.bwcErrorProvider.msg(err),
+                this.translate.instant('Error fetching this invoice')
+              );
+            });
         })
         .catch(err => {
           this.logger.warn(
             'Error fetching this invoice: ',
             this.bwcErrorProvider.msg(err)
           );
-          this.paymentExpired = true;
           this.showErrorInfoSheet(
             this.bwcErrorProvider.msg(err),
             this.translate.instant('Error fetching this invoice')
@@ -384,22 +402,21 @@ export class TxpDetailsPage {
       });
   }
 
-  public getShortNetworkName(): string {
-    return this.wallet.credentials.networkName.substring(0, 4);
-  }
-
   private updateTxInfo(eventName: string): void {
     this.walletProvider
       .getTxp(this.wallet, this.tx.id)
       .then(tx => {
-        let action = _.find(tx.actions, {
+        let action: any = _.find(tx.actions, {
           copayerId: this.wallet.credentials.copayerId
         });
 
         this.tx = this.txFormatProvider.processTx(this.wallet.coin, tx);
-
-        if (!action && tx.status == 'pending') this.tx.pendingForUs = true;
-
+        if ((!action || action.type === 'failed') && tx.status == 'pending') {
+          this.tx.pendingForUs = true;
+          if (action.type === 'failed') {
+            this.executionPending = true;
+          }
+        }
         this.updateCopayerList();
         this.initActionList();
       })
@@ -428,7 +445,28 @@ export class TxpDetailsPage {
   }
 
   public onConfirm(): void {
-    this.sign();
+    if (this.tx.multisigContractAddress) {
+      this.goToConfirm();
+    } else {
+      this.sign();
+    }
+  }
+
+  public goToConfirm(): void {
+    let amount = 0;
+    this.viewCtrl.dismiss({
+      walletId: this.wallet.credentials.walletId,
+      amount,
+      coin: this.wallet.coin,
+      network: this.wallet.network,
+      multisigContractAddress: this.wallet.credentials.multisigEthInfo
+        .multisigContractAddress, // address eth multisig contract
+      toAddress: this.wallet.credentials.multisigEthInfo
+        .multisigContractAddress, // address eth multisig contract
+      isEthMultisigConfirm: !this.executionPending ? true : false,
+      isEthMultisigExecute: this.executionPending ? true : false,
+      transactionId: this.tx.multisigTxId
+    });
   }
 
   public close(): void {

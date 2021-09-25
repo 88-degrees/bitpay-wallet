@@ -1,9 +1,11 @@
 import { Component } from '@angular/core';
 import { NavController, NavParams } from 'ionic-angular';
 import * as _ from 'lodash';
-import { AddressBookProvider } from '../../../providers/address-book/address-book';
-import { AddressProvider } from '../../../providers/address/address';
-import { Logger } from '../../../providers/logger/logger';
+import { Subject } from 'rxjs';
+import {
+  AddressBookProvider,
+  Contact
+} from '../../../providers/address-book/address-book';
 import { AddressbookAddPage } from './add/add';
 import { AddressbookViewPage } from './view/view';
 
@@ -12,51 +14,41 @@ import { AddressbookViewPage } from './view/view';
   templateUrl: 'addressbook.html'
 })
 export class AddressbookPage {
-  private cache: boolean = false;
-  public addressbook: object[] = [];
-  public filteredAddressbook: object[] = [];
+  public addressbook: Contact[];
+  public filteredAddressbook: Subject<Contact[]>;
 
   public isEmptyList: boolean;
+  public migratingContacts: boolean;
 
   constructor(
     public navCtrl: NavController,
     public navParams: NavParams,
-    private logger: Logger,
-    private addressbookProvider: AddressBookProvider,
-    private addressProvider: AddressProvider
+    private addressbookProvider: AddressBookProvider
   ) {
-    this.initAddressbook();
+    this.addressbook = [];
+    this.filteredAddressbook = new Subject<Contact[]>();
   }
 
   ionViewDidEnter() {
-    if (this.cache) this.initAddressbook();
-    this.cache = true;
+    this.migratingContacts = false;
+    this.addressbookProvider.migratingContactsSubject.subscribe(_migrating => {
+      this.migratingContacts = _migrating;
+    });
+    setTimeout(async () => {
+      await this.initAddressbook().catch();
+    }, 100);
   }
 
-  private initAddressbook(): void {
-    this.addressbookProvider
-      .list()
-      .then(addressBook => {
-        this.isEmptyList = _.isEmpty(addressBook);
-
-        let contacts: object[] = [];
-        _.each(addressBook, (contact, k: string) => {
-          const coinInfo = this.getCoinAndNetwork(k);
-          contacts.push({
-            name: _.isObject(contact) ? contact.name : contact,
-            address: k,
-            email: _.isObject(contact) ? contact.email : null,
-            tag: _.isObject(contact) ? contact.tag : null,
-            coin: coinInfo.coin,
-            network: coinInfo.network
-          });
-        });
-        this.addressbook = _.clone(contacts);
-        this.filteredAddressbook = _.clone(this.addressbook);
-      })
-      .catch(err => {
-        this.logger.error(err);
-      });
+  private async initAddressbook() {
+    this.addressbook = [];
+    this.filteredAddressbook.next([]);
+    const livenetContacts = await this.addressbookProvider.list('livenet');
+    if (livenetContacts) this.addressbook.push(...livenetContacts);
+    const testnetContacts = await this.addressbookProvider.list('testnet');
+    if (testnetContacts) this.addressbook.push(...testnetContacts);
+    this.isEmptyList = _.isEmpty(this.addressbook);
+    if (!this.isEmptyList)
+      this.filteredAddressbook.next(_.orderBy(this.addressbook, 'name'));
   }
 
   public addEntry(): void {
@@ -77,14 +69,10 @@ export class AddressbookPage {
         let name = item['name'];
         return _.includes(name.toLowerCase(), val.toLowerCase());
       });
-      this.filteredAddressbook = result;
+      this.filteredAddressbook.next(result);
     } else {
       // Reset items back to all of the items
-      this.initAddressbook();
+      this.filteredAddressbook.next(_.clone(this.addressbook));
     }
-  }
-
-  private getCoinAndNetwork(addr: string): { coin: string; network: string } {
-    return this.addressProvider.getCoinAndNetwork(addr);
   }
 }

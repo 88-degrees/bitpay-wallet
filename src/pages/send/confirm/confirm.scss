@@ -69,6 +69,9 @@ page-bitpay-card-topup {
     display: flex;
     justify-content: center;
     align-items: center;
+    &.align-right {
+      margin-left: auto;
+    }
     .multiple-length {
       display: flex;
     }
@@ -91,6 +94,10 @@ page-bitpay-card-topup {
   }
   .last-item {
     margin-left: auto !important;
+  }
+  .multi-amount {
+    text-align: right;
+    margin-top: 15px;
   }
 
   .bp-list {
@@ -189,5 +196,27 @@ page-bitpay-card-topup {
     font-size: 28px;
     color: color($colors, primary);
     padding-top: 20px;
+  }
+  .item-img {
+    &.info {
+      padding-left: 10px;
+    }
+  }
+  .item.item-input span {
+    width: auto;
+  }
+  .item.item-input input {
+    width: 80px;
+  }
+  .wc-img {
+    width: 50px;
+    height: 50px;
+    border-radius: 8px;
+    &-sm {
+      border-radius: 50%;
+      @media (max-width: 381px) {
+        display: none;
+      }
+    }
   }
 }

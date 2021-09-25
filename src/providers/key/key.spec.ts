@@ -8,6 +8,11 @@ describe('KeyProvider', () => {
   let persistenceProvider: PersistenceProvider;
   let logger: Logger;
   let key;
+  let key1;
+  let key2;
+  let key3;
+  let key4;
+  let key5;
   let keys: any[];
   let warnSpy;
 
@@ -23,11 +28,12 @@ describe('KeyProvider', () => {
 
   describe('addKey', () => {
     it('should add provided key to storage for the first time', async () => {
-      key = {
+      key = {};
+      key.toObj = () => ({
         id: 'id1',
         xPrivKey: 'xPrivKey1',
         version: 1
-      };
+      });
       await keyProvider.load();
       keyProvider
         .addKey(key)
@@ -62,12 +68,12 @@ describe('KeyProvider', () => {
       ]);
 
       await keyProvider.load();
-
-      key = {
+      key = {};
+      key.toObj = () => ({
         id: 'id3',
         xPrivKey: 'xPrivKey3',
         version: 1
-      };
+      });
 
       keyProvider
         .addKey(key)
@@ -113,11 +119,12 @@ describe('KeyProvider', () => {
 
       await keyProvider.load();
 
-      key = {
+      key = {};
+      key.toObj = () => ({
         id: 'id1',
         xPrivKeyEncrypted: 'xPrivKeyEncrypted',
         version: 1
-      };
+      });
 
       keyProvider
         .addKey(key)
@@ -148,18 +155,20 @@ describe('KeyProvider', () => {
 
   describe('addKeys', () => {
     it('should add provided keys to storage for the first time', async () => {
-      keys = [
-        {
-          id: 'id1',
-          xPrivKey: 'xPrivKey1',
-          version: 1
-        },
-        {
-          id: 'id2',
-          xPrivKey: 'xPrivKey2',
-          version: 1
-        }
-      ];
+      key1 = {};
+      key1.toObj = () => ({
+        id: 'id1',
+        xPrivKey: 'xPrivKey1',
+        version: 1
+      });
+      key2 = {};
+      key2.toObj = () => ({
+        id: 'id2',
+        xPrivKey: 'xPrivKey2',
+        version: 1
+      });
+
+      keys = [key1, key2];
 
       await keyProvider.load();
       keyProvider
@@ -186,31 +195,32 @@ describe('KeyProvider', () => {
     });
 
     it('should add provided keys to storage', async () => {
-      await persistenceProvider.setKeys([
-        {
-          id: 'id1',
-          xPrivKey: 'xPrivKey1',
-          version: 1
-        },
-        {
-          id: 'id2',
-          xPrivKey: 'xPrivKey2',
-          version: 1
-        }
-      ]);
+      key1 = {
+        id: 'id1',
+        xPrivKey: 'xPrivKey1',
+        version: 1
+      };
+      key2 = {
+        id: 'id2',
+        xPrivKey: 'xPrivKey2',
+        version: 1
+      };
+      key3 = {};
+      key3.toObj = () => ({
+        id: 'id3',
+        xPrivKey: 'xPrivKey3',
+        version: 1
+      });
+      key4 = {};
+      key4.toObj = () => ({
+        id: 'id4',
+        xPrivKey: 'xPrivKey4',
+        version: 1
+      });
 
-      keys = [
-        {
-          id: 'id3',
-          xPrivKey: 'xPrivKey3',
-          version: 1
-        },
-        {
-          id: 'id4',
-          xPrivKey: 'xPrivKey4',
-          version: 1
-        }
-      ];
+      await persistenceProvider.setKeys([key1, key2]);
+
+      keys = [key3, key4];
 
       await keyProvider.load();
       keyProvider
@@ -248,46 +258,44 @@ describe('KeyProvider', () => {
     });
 
     it('should add just unrepeated provided keys', async () => {
-      await persistenceProvider.setKeys([
-        {
-          id: 'id1',
-          xPrivKey: 'xPrivKey1',
-          version: 1
-        },
-        {
-          id: 'id2',
-          xPrivKey: 'xPrivKey2',
-          version: 1
-        }
-      ]);
+      key1 = {
+        id: 'id1',
+        xPrivKey: 'xPrivKey1',
+        version: 1
+      };
+      key2 = {
+        id: 'id2',
+        xPrivKey: 'xPrivKey2',
+        version: 1
+      };
+      key3 = {};
+      key3.toObj = () => ({
+        id: 'id3',
+        xPrivKey: 'xPrivKey3',
+        version: 1
+      });
+      key4 = {};
+      key4.toObj = () => ({
+        id: 'id4',
+        xPrivKey: 'xPrivKey4',
+        version: 1
+      });
+      key5 = {};
+      key5.toObj = () => ({
+        id: 'id5',
+        xPrivKey: 'xPrivKey5',
+        version: 1
+      });
+      key = {};
+      key.toObj = () => ({
+        id: 'id1',
+        xPrivKey: 'xPrivKey1',
+        version: 1
+      });
 
-      keys = [
-        {
-          id: 'id3',
-          xPrivKey: 'xPrivKey3',
-          version: 1
-        },
-        {
-          id: 'id4',
-          xPrivKey: 'xPrivKey4',
-          version: 1
-        },
-        {
-          id: 'id3',
-          xPrivKey: 'xPrivKey3',
-          version: 1
-        },
-        {
-          id: 'id1',
-          xPrivKey: 'xPrivKey1',
-          version: 1
-        },
-        {
-          id: 'id5',
-          xPrivKey: 'xPrivKey5',
-          version: 1
-        }
-      ];
+      await persistenceProvider.setKeys([key1, key2]);
+
+      keys = [key3, key4, key3, key, key5];
 
       await keyProvider.load();
       keyProvider
@@ -343,18 +351,20 @@ describe('KeyProvider', () => {
         }
       ]);
 
-      keys = [
-        {
-          id: 'id1',
-          xPrivKey: 'xPrivKey3',
-          version: 1
-        },
-        {
-          id: 'id2',
-          xPrivKey: 'xPrivKey4',
-          version: 1
-        }
-      ];
+      key3 = {};
+      key3.toObj = () => ({
+        id: 'id1',
+        xPrivKey: 'xPrivKey3',
+        version: 1
+      });
+      key4 = {};
+      key4.toObj = () => ({
+        id: 'id2',
+        xPrivKey: 'xPrivKey4',
+        version: 1
+      });
+
+      keys = [key3, key4];
 
       await keyProvider.load();
       keyProvider
@@ -513,26 +523,6 @@ describe('KeyProvider', () => {
             ]);
           });
         });
-    });
-  });
-
-  describe('Function: encrypt new key', () => {
-    it('Should call askPassword to encrypt key', async () => {
-      await persistenceProvider.setKeys([
-        {
-          id: 'id1',
-          xPrivKey: 'xPrivKey',
-          version: 1
-        }
-      ]);
-      await keyProvider.load();
-      let spyAskPassword = spyOn<any>(keyProvider, 'askPassword');
-      spyAskPassword.and.returnValue(Promise.resolve('password1'));
-      const key = keyProvider.getKey('id1');
-      keyProvider.encryptNewKey(key).catch(err => {
-        expect(err).toBeUndefined();
-      });
-      expect(spyAskPassword).toHaveBeenCalled();
     });
   });
 

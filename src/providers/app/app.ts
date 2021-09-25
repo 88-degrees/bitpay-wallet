@@ -1,6 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 
+import * as _ from 'lodash';
+
 import { File } from '@ionic-native/file';
 
 // providers
@@ -8,6 +10,7 @@ import { ConfigProvider } from '../../providers/config/config';
 import { LanguageProvider } from '../../providers/language/language';
 import { Logger } from '../../providers/logger/logger';
 import { PersistenceProvider } from '../../providers/persistence/persistence';
+import { CurrencyProvider } from '../currency/currency';
 import { PlatformProvider } from '../platform/platform';
 import { ThemeProvider } from '../theme/theme';
 
@@ -43,12 +46,19 @@ interface App {
   _extraCSS: string;
   _enabledExtensions;
 }*/
-
+export interface Version {
+  major: number;
+  minor: number;
+  patch: number;
+}
 @Injectable()
 export class AppProvider {
   public info: any = {};
+  public version: Version;
   public servicesInfo;
+  public homeBalance: any;
   public isLockModalOpen: boolean;
+  public skipLockModal: boolean;
   private jsonPathApp: string = 'assets/appConfig.json';
   private jsonPathServices: string = 'assets/externalServices.json';
 
@@ -60,13 +70,24 @@ export class AppProvider {
     private persistence: PersistenceProvider,
     private file: File,
     private platformProvider: PlatformProvider,
-    private themeProvider: ThemeProvider
+    private themeProvider: ThemeProvider,
+    private currencyProvider: CurrencyProvider
   ) {
     this.logger.debug('AppProvider initialized');
   }
 
   public async load() {
     await Promise.all([this.getInfo(), this.loadProviders()]);
+  }
+
+  public setTotalBalance() {
+    this.persistence.getTotalBalance().then(data => {
+      if (!data) return;
+      if (_.isString(data)) {
+        data = JSON.parse(data);
+      }
+      this.homeBalance = data;
+    });
   }
 
   private async getInfo() {
@@ -78,13 +99,24 @@ export class AppProvider {
       this.info = JSON.parse(this.info);
       this.servicesInfo = JSON.parse(this.servicesInfo);
     }
+    this.version = this.formatVersionString();
+  }
+
+  private formatVersionString(): Version {
+    var formattedNumber = this.info.version.replace(/^v/i, '').split('.');
+    return {
+      major: +formattedNumber[0],
+      minor: +formattedNumber[1],
+      patch: +formattedNumber[2]
+    };
   }
 
   private async loadProviders() {
-    this.persistence.load();
+    await this.persistence.load();
     await this.config.load();
     await this.themeProvider.load();
-    this.language.load();
+    await this.language.load();
+    await this.currencyProvider.load();
   }
 
   private getAppInfo() {
@@ -107,5 +139,19 @@ export class AppProvider {
     } else {
       return this.http.get(this.jsonPathServices).toPromise();
     }
+  }
+
+  private getMajorMinor(version) {
+    return version.split(/\.(?=[^\.]+$)/)[0];
+  }
+
+  public meetsMajorMinorVersion(currentVersion, dismissFlagVersion) {
+    if (!currentVersion || !dismissFlagVersion) {
+      return false;
+    }
+    return (
+      this.getMajorMinor(currentVersion) ===
+      this.getMajorMinor(dismissFlagVersion)
+    );
   }
 }

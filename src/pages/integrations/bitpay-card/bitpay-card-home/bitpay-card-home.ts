@@ -1,7 +1,13 @@
 import { Component, Input, OnInit } from '@angular/core';
 import { Events, NavController } from 'ionic-angular';
 // Providers
-import { AppProvider, IABCardProvider } from '../../../../providers';
+import {
+  AnalyticsProvider,
+  AppProvider,
+  IABCardProvider,
+  Logger,
+  PlatformProvider
+} from '../../../../providers';
 
 // Pages
 import { animate, style, transition, trigger } from '@angular/animations';
@@ -50,7 +56,6 @@ export class BitPayCardHome implements OnInit {
   public isFetching: boolean;
   public ready: boolean;
   public alreadyOnWaitList: boolean;
-
   @Input() showBitpayCardGetStarted: boolean;
   @Input() bitpayCardItems: any;
   @Input() cardExperimentEnabled: boolean;
@@ -64,6 +69,9 @@ export class BitPayCardHome implements OnInit {
     private navCtrl: NavController,
     private iabCardProvider: IABCardProvider,
     private persistenceProvider: PersistenceProvider,
+    private analyticsProvider: AnalyticsProvider,
+    private logger: Logger,
+    private platformProvider: PlatformProvider,
     private events: Events
   ) {
     this.persistenceProvider.getWaitingListStatus().then(status => {
@@ -73,19 +81,14 @@ export class BitPayCardHome implements OnInit {
     this.events.subscribe('reachedCardLimit', () => {
       this.disableAddCard = true;
     });
-    this.events.subscribe('isFetchingDebitCards', status => {
-      this.isFetching = status;
-    });
   }
 
   ngOnInit() {
     this.appName = this.appProvider.info.userVisibleName;
-    setTimeout(() => {
-      this.ready = true;
-      this.disableAddCard =
-        this.bitpayCardItems &&
-        this.bitpayCardItems.find(c => c.provider === 'galileo');
-    }, 200);
+    this.disableAddCard =
+      this.bitpayCardItems &&
+      this.bitpayCardItems.find(c => c.provider === 'galileo');
+    this.runCardAudienceEvents();
   }
 
   public goToBitPayCardIntroPage() {
@@ -96,24 +99,77 @@ export class BitPayCardHome implements OnInit {
     return index;
   }
 
-  public async goToCard(cardId) {
-    const token = await this.persistenceProvider.getBitPayIdPairingToken(
-      this.network
-    );
-    const email = this.bitpayCardItems[0].email;
-
-    const message = !token
-      ? `loadDashboard?${cardId}&${email}`
-      : `loadDashboard?${cardId}`;
-
-    this.iabCardProvider.show();
-    setTimeout(() => {
-      this.iabCardProvider.sendMessage(
-        {
-          message
-        },
-        () => {}
+  public async runCardAudienceEvents() {
+    try {
+      const allCards = await this.persistenceProvider.getBitpayDebitCards(
+        'livenet'
       );
+      const galileoCards = allCards.filter(c => c.provider === 'galileo');
+      const hasPhysicalCard = galileoCards.some(c => c.cardType === 'physical');
+      const hasVirtualCard = galileoCards.some(c => c.cardType === 'virtual');
+      const deviceUUID = await this.platformProvider.getDeviceUUID();
+      const hasReportedFirebaseHasFundedCard = await this.persistenceProvider.getHasReportedFirebaseHasFundedCard();
+
+      if (!!galileoCards.length) {
+        if (!hasReportedFirebaseHasFundedCard) {
+          const cardHasBalance = galileoCards.some(c => c.cardBalance > 0);
+          const event = cardHasBalance
+            ? 'has_funded_card_2'
+            : 'has_not_funded_card_2';
+          this.analyticsProvider.logEvent(event, {
+            uuid: deviceUUID
+          });
+          await this.persistenceProvider.setHasReportedFirebaseHasFundedCard();
+        }
+
+        const hasReportedFirebaseHasPhysicalCard = await this.persistenceProvider.getHasReportedFirebaseHasPhysicalCardFlag();
+        const hasReportedFirebaseHasVirtualCard = await this.persistenceProvider.getHasReportedFirebaseHasVirtualCardFlag();
+
+        if (!hasReportedFirebaseHasPhysicalCard) {
+          if (hasPhysicalCard) {
+            this.analyticsProvider.logEvent('has_physical_card', {
+              uuid: deviceUUID
+            });
+          }
+          await this.persistenceProvider.setHasReportedFirebaseHasPhysicalCardFlag();
+        }
+
+        if (!hasReportedFirebaseHasVirtualCard) {
+          if (hasVirtualCard) {
+            this.analyticsProvider.logEvent('has_virtual_card', {
+              uuid: deviceUUID
+            });
+          }
+          await this.persistenceProvider.setHasReportedFirebaseHasVirtualCardFlag();
+        }
+      }
+    } catch (e) {
+      this.logger.debug(
+        'Error occurred during card audience events: ' + e.message
+      );
+    }
+  }
+
+  public async goToCard(cardId) {
+    this.iabCardProvider.loadingWrapper(async () => {
+      const token = await this.persistenceProvider.getBitPayIdPairingToken(
+        this.network
+      );
+      const email = this.bitpayCardItems[0].email;
+
+      const message = !token
+        ? `loadDashboard?${cardId}&${email}`
+        : `loadDashboard?${cardId}`;
+
+      this.iabCardProvider.show();
+      setTimeout(() => {
+        this.iabCardProvider.sendMessage(
+          {
+            message
+          },
+          () => {}
+        );
+      });
     });
   }
 }

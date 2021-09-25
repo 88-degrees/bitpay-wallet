@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
-import { NavController } from 'ionic-angular';
+import { Events, NavController } from 'ionic-angular';
 
 // pages
 import { SendFeedbackPage } from '../../feedback/send-feedback/send-feedback';
@@ -9,13 +9,10 @@ import { SessionLogPage } from './session-log/session-log';
 // providers
 import {
   AppProvider,
-  BitPayProvider,
-  ConfigProvider,
   ExternalLinkProvider,
   Logger,
   PersistenceProvider,
-  ReplaceParametersProvider,
-  ThemeProvider
+  ReplaceParametersProvider
 } from '../../../providers';
 
 @Component({
@@ -27,6 +24,8 @@ export class AboutPage {
   public commitHash: string;
   public title: string;
   private tapped = 0;
+  private releaseInfoTaps = 0;
+  private easterEggStatus;
   public pressed: number = 0;
   constructor(
     private navCtrl: NavController,
@@ -35,20 +34,20 @@ export class AboutPage {
     private externalLinkProvider: ExternalLinkProvider,
     private replaceParametersProvider: ReplaceParametersProvider,
     private translate: TranslateService,
-    private bitpayProvider: BitPayProvider,
     private persistenceProvider: PersistenceProvider,
-    private configProvider: ConfigProvider,
-    private themeProvider: ThemeProvider
+    private events: Events
   ) {}
 
-  ionViewDidLoad() {
+  async ionViewDidLoad() {
     this.logger.info('Loaded: AboutPage');
     this.commitHash = this.appProvider.info.commitHash;
     this.version = this.appProvider.info.version;
+    this.releaseInfoTaps = 0;
     this.title = this.replaceParametersProvider.replace(
       this.translate.instant('About {{appName}}'),
       { appName: this.appProvider.info.nameCase }
     );
+    this.easterEggStatus = await this.persistenceProvider.getTestingAdvertisments();
   }
 
   public openExternalLink(): void {
@@ -75,6 +74,21 @@ export class AboutPage {
     );
   }
 
+  public async countReleaseHeaderTaps() {
+    this.releaseInfoTaps++;
+    if (this.releaseInfoTaps !== 12) return;
+    this.releaseInfoTaps = 0;
+    if (this.easterEggStatus === 'enabled') {
+      this.easterEggStatus = undefined;
+      this.persistenceProvider.removeTestingAdvertisments();
+      this.events.publish('Local/TestAdsToggle', false);
+    } else {
+      this.easterEggStatus = 'enabled';
+      this.persistenceProvider.setTestingAdvertisements('enabled');
+      this.events.publish('Local/TestAdsToggle', true);
+    }
+  }
+
   public openSessionLog(): void {
     this.navCtrl.push(SessionLogPage);
   }
@@ -87,23 +101,15 @@ export class AboutPage {
   public async wipeBitPayAccounts() {
     this.tapped++;
     if (this.tapped >= 10) {
-      await this.persistenceProvider.removeAllBitPayAccounts(
-        this.bitpayProvider.getEnvironment().network
-      );
-      alert('removed accounts');
       this.tapped = 0;
-    }
-  }
-
-  public async easterEgg() {
-    const config = this.configProvider.get();
-    if (config.theme.enabled) return;
-    this.pressed++;
-    if (this.pressed == 5) {
-      this.themeProvider.getDetectedSystemTheme().then(detectedTheme => {
-        this.themeProvider.setActiveTheme('system', detectedTheme);
-        this.pressed = 0;
-      });
+      localStorage.removeItem('walletconnect');
+      alert('[DEV] - wc - cleared local storage');
+      const wcSession = await this.persistenceProvider.getWalletConnect();
+      this.logger.log(wcSession);
+      if (wcSession) {
+        await this.persistenceProvider.removeWalletConnect();
+        alert('[DEV] - wc - cleared session');
+      }
     }
   }
 }

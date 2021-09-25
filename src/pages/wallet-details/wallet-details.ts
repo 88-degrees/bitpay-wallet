@@ -12,18 +12,23 @@ import {
 import * as _ from 'lodash';
 import * as moment from 'moment';
 import { Subscription } from 'rxjs';
+import env from '../../environments';
 
 // providers
 import { AddressBookProvider } from '../../providers/address-book/address-book';
+import { AnalyticsProvider } from '../../providers/analytics/analytics';
+import { BuyCryptoProvider } from '../../providers/buy-crypto/buy-crypto';
 import { BwcErrorProvider } from '../../providers/bwc-error/bwc-error';
+import { ConfigProvider } from '../../providers/config/config';
 import { CurrencyProvider } from '../../providers/currency/currency';
 import { ErrorsProvider } from '../../providers/errors/errors';
+import { ExchangeCryptoProvider } from '../../providers/exchange-crypto/exchange-crypto';
 import { ExternalLinkProvider } from '../../providers/external-link/external-link';
 import { GiftCardProvider } from '../../providers/gift-card/gift-card';
 import { CardConfigMap } from '../../providers/gift-card/gift-card.types';
-import { ActionSheetProvider } from '../../providers/index';
+import { ActionSheetProvider, AppProvider } from '../../providers/index';
 import { Logger } from '../../providers/logger/logger';
-import { OnGoingProcessProvider } from '../../providers/on-going-process/on-going-process';
+import { PersistenceProvider } from '../../providers/persistence/persistence';
 import { PlatformProvider } from '../../providers/platform/platform';
 import { ProfileProvider } from '../../providers/profile/profile';
 import { ThemeProvider } from '../../providers/theme/theme';
@@ -32,6 +37,7 @@ import { WalletProvider } from '../../providers/wallet/wallet';
 
 // pages
 import { BackupKeyPage } from '../../pages/backup/backup-key/backup-key';
+import { ExchangeCryptoPage } from '../../pages/exchange-crypto/exchange-crypto';
 import { SendPage } from '../../pages/send/send';
 import { WalletAddressesPage } from '../../pages/settings/wallet-settings/wallet-settings-advanced/wallet-addresses/wallet-addresses';
 import { TxDetailsModal } from '../../pages/tx-details/tx-details';
@@ -43,11 +49,7 @@ import { WalletBalanceModal } from './wallet-balance/wallet-balance';
 const HISTORY_SHOW_LIMIT = 10;
 const MIN_UPDATE_TIME = 2000;
 const TIMEOUT_FOR_REFRESHER = 1000;
-interface UpdateWalletOptsI {
-  walletId: string;
-  force?: boolean;
-  alsoUpdateHistory?: boolean;
-}
+
 @Component({
   selector: 'page-wallet-details',
   templateUrl: 'wallet-details.html'
@@ -58,6 +60,8 @@ export class WalletDetailsPage {
   private onResumeSubscription: Subscription;
   private analyzeUtxosDone: boolean;
   private zone;
+  private blockexplorerUrl: string;
+  private blockexplorerUrlTestnet: string;
 
   public requiresMultipleSignatures: boolean;
   public wallet;
@@ -72,13 +76,19 @@ export class WalletDetailsPage {
   public updatingTxHistoryProgress: number = 0;
   public showNoTransactionsYetMsg: boolean;
   public showBalanceButton: boolean = false;
-  public addressbook = {};
+  public addressbook = [];
   public txps = [];
   public txpsPending: any[];
   public lowUtxosWarning: boolean;
   public associatedWallet: string;
   public backgroundColor: string;
   private isCordova: boolean;
+  public useLegacyQrCode: boolean;
+  public isDarkModeEnabled: boolean;
+  public showBuyCrypto: boolean;
+  public showExchangeCrypto: boolean;
+  public multisigPendingWallets: any[] = [];
+  public multisigContractInstantiationInfo: any[];
 
   public supportedCards: Promise<CardConfigMap>;
   constructor(
@@ -93,7 +103,6 @@ export class WalletDetailsPage {
     private timeProvider: TimeProvider,
     private translate: TranslateService,
     private modalCtrl: ModalController,
-    private onGoingProcessProvider: OnGoingProcessProvider,
     private externalLinkProvider: ExternalLinkProvider,
     private actionSheetProvider: ActionSheetProvider,
     private platform: Platform,
@@ -103,36 +112,65 @@ export class WalletDetailsPage {
     private socialSharing: SocialSharing,
     private bwcErrorProvider: BwcErrorProvider,
     private errorsProvider: ErrorsProvider,
-    private themeProvider: ThemeProvider
+    private themeProvider: ThemeProvider,
+    private configProvider: ConfigProvider,
+    private analyticsProvider: AnalyticsProvider,
+    private buyCryptoProvider: BuyCryptoProvider,
+    private exchangeCryptoProvider: ExchangeCryptoProvider,
+    private appProvider: AppProvider,
+    private persistenceProvider: PersistenceProvider
   ) {
     this.zone = new NgZone({ enableLongStackTrace: false });
     this.isCordova = this.platformProvider.isCordova;
 
     this.wallet = this.profileProvider.getWallet(this.navParams.data.walletId);
     this.supportedCards = this.giftCardProvider.getSupportedCardMap();
+    this.useLegacyQrCode = this.configProvider.get().legacyQrCode.show;
+    this.isDarkModeEnabled = this.themeProvider.isDarkModeEnabled();
+    this.showBuyCrypto =
+      _.includes(
+        this.buyCryptoProvider.exchangeCoinsSupported,
+        this.wallet.coin
+      ) &&
+      (this.wallet.network == 'livenet' ||
+        (this.wallet.network == 'testnet' && env.name == 'development'));
+    this.showExchangeCrypto =
+      (_.includes(
+        this.exchangeCryptoProvider.exchangeCoinsSupported,
+        this.wallet.coin
+      ) ||
+        this.currencyProvider.isERCToken(this.wallet.coin)) &&
+      this.wallet.network == 'livenet';
 
     // Getting info from cache
     if (this.navParams.data.clearCache) {
       this.clearHistoryCache();
     } else {
       if (this.wallet.completeHistory) this.showHistory();
-      else
-        this.fetchTxHistory({
+      else {
+        this.events.publish('Local/WalletFocus', {
           walletId: this.wallet.credentials.walletId,
-          force: true
+          force: true,
+          alsoUpdateHistory: true
         });
+      }
     }
 
     this.requiresMultipleSignatures = this.wallet.credentials.m > 1;
 
     this.addressbookProvider
-      .list()
+      .list(this.wallet.network)
       .then(ab => {
         this.addressbook = ab;
       })
       .catch(err => {
         this.logger.error(err);
       });
+
+    let defaults = this.configProvider.getDefaults();
+    this.blockexplorerUrl = defaults.blockExplorerUrl[this.wallet.coin];
+    this.blockexplorerUrlTestnet =
+      defaults.blockExplorerUrlTestnet[this.wallet.coin];
   }
 
   subscribeEvents() {
@@ -140,23 +178,29 @@ export class WalletDetailsPage {
     this.events.subscribe('Local/WalletHistoryUpdate', this.updateHistory);
   }
 
-  ionViewWillEnter() {
-    this.backgroundColor = this.themeProvider.getThemeInfo().walletDetailsBackgroundStart;
+  ionViewDidLoad() {
     this.onResumeSubscription = this.platform.resume.subscribe(() => {
       this.profileProvider.setFastRefresh(this.wallet);
       this.subscribeEvents();
     });
+    this.backgroundColor = this.themeProvider.getThemeInfo().walletDetailsBackgroundStart;
     this.profileProvider.setFastRefresh(this.wallet);
     this.events.publish('Local/WalletFocus', {
-      walletId: this.wallet.credentials.walletId
+      walletId: this.wallet.credentials.walletId,
+      force: true,
+      alsoUpdateHistory: true
     });
     this.subscribeEvents();
+    this.checkIfEthMultisigPendingInstantiation();
   }
 
   ionViewWillLeave() {
     this.profileProvider.setSlowRefresh(this.wallet);
-    this.events.unsubscribe('Local/WalletUpdate', this.updateStatus);
-    this.events.unsubscribe('Local/WalletHistoryUpdate', this.updateHistory);
+  }
+
+  ngOnDestroy() {
+    this.events.unsubscribe('Local/WalletUpdate');
+    this.events.unsubscribe('Local/WalletHistoryUpdate');
     this.onResumeSubscription.unsubscribe();
   }
 
@@ -171,47 +215,6 @@ export class WalletDetailsPage {
       !this.updateStatusError &&
       !this.updateTxHistoryError
     );
-  }
-
-  private fetchTxHistory(opts: UpdateWalletOptsI) {
-    if (!opts.walletId) {
-      this.logger.error('Error no walletId in update History');
-      return;
-    }
-
-    const progressFn = ((_, newTxs) => {
-      let args = {
-        walletId: opts.walletId,
-        finished: false,
-        progress: newTxs
-      };
-      this.events.publish('Local/WalletHistoryUpdate', args);
-    }).bind(this);
-
-    // Fire a startup event, to allow UI to show the spinner
-    this.events.publish('Local/WalletHistoryUpdate', {
-      walletId: opts.walletId,
-      finished: false
-    });
-    this.walletProvider
-      .fetchTxHistory(this.wallet, progressFn, opts)
-      .then(txHistory => {
-        this.wallet.completeHistory = txHistory;
-        this.events.publish('Local/WalletHistoryUpdate', {
-          walletId: opts.walletId,
-          finished: true
-        });
-      })
-      .catch(err => {
-        if (err != 'HISTORY_IN_PROGRESS') {
-          this.logger.warn('WalletHistoryUpdate ERROR', err);
-          this.events.publish('Local/WalletHistoryUpdate', {
-            walletId: opts.walletId,
-            finished: false,
-            error: err
-          });
-        }
-      });
   }
 
   public isUtxoCoin(): boolean {
@@ -248,13 +251,12 @@ export class WalletDetailsPage {
   private setPendingTxps(txps) {
     this.txps = !txps ? [] : _.sortBy(txps, 'createdOn').reverse();
     this.txpsPending = [];
-
     this.txps.forEach(txp => {
-      const action = _.find(txp.actions, {
+      const action: any = _.find(txp.actions, {
         copayerId: txp.wallet.copayerId
       });
 
-      if (!action && txp.status == 'pending') {
+      if ((!action || action.type === 'failed') && txp.status == 'pending') {
         this.txpsPending.push(txp);
       }
 
@@ -266,15 +268,24 @@ export class WalletDetailsPage {
   }
 
   public openProposalsNotificationsPage(): void {
-    this.navCtrl.push(ProposalsNotificationsPage, { walletId: this.wallet.id });
+    if (this.wallet.credentials.multisigEthInfo) {
+      this.navCtrl.push(ProposalsNotificationsPage, {
+        multisigContractAddress: this.wallet.credentials.multisigEthInfo
+          .multisigContractAddress
+      });
+    } else {
+      this.navCtrl.push(ProposalsNotificationsPage, {
+        walletId: this.wallet.id
+      });
+    }
   }
 
   private updateAll = _.debounce(
-    (opts?) => {
-      opts = opts || {};
+    () => {
       this.events.publish('Local/WalletFocus', {
         walletId: this.wallet.credentials.walletId,
-        force: true
+        force: true,
+        alsoUpdateHistory: true
       });
     },
     MIN_UPDATE_TIME,
@@ -336,6 +347,11 @@ export class WalletDetailsPage {
 
       if (this.wallet.needsBackup && hasTx && this.showBackupNeededMsg)
         this.openBackupModal();
+
+      this.events.publish('Local/WalletFocus', {
+        walletId: this.wallet.credentials.walletId,
+        force: true
+      });
 
       this.showHistory();
     } else {
@@ -410,24 +426,6 @@ export class WalletDetailsPage {
     }
   };
 
-  public recreate() {
-    this.onGoingProcessProvider.set('recreating');
-    this.walletProvider
-      .recreate(this.wallet)
-      .then(() => {
-        this.onGoingProcessProvider.clear();
-        setTimeout(() => {
-          this.walletProvider.startScan(this.wallet).then(() => {
-            this.updateAll({ force: true });
-          });
-        });
-      })
-      .catch(err => {
-        this.onGoingProcessProvider.clear();
-        this.logger.error(err);
-      });
-  }
-
   public itemTapped(tx) {
     if (tx.hasUnconfirmedInputs) {
       const infoSheet = this.actionSheetProvider.createInfoSheet(
@@ -461,12 +459,16 @@ export class WalletDetailsPage {
         network: this.wallet.network,
         coin: this.wallet.coin,
         speedUpTx: true,
-        toAddress: addr,
+        toAddress: this.wallet.coin === 'eth' ? tx.addressTo : addr,
         walletId: this.wallet.credentials.walletId,
         fromWalletDetails: true,
         txid: tx.txid,
         recipientType: 'wallet',
-        name: this.wallet.name
+        name:
+          this.wallet.coin === 'eth' && tx.customData
+            ? tx.customData.toWalletName
+            : this.wallet.name,
+        nonce: tx.nonce
       };
       const nextView = {
         name: 'ConfirmPage',
@@ -545,7 +547,7 @@ export class WalletDetailsPage {
   }
 
   public canSpeedUpTx(tx): boolean {
-    if (this.wallet.coin !== 'btc') return false;
+    if (this.wallet.coin !== 'btc' && this.wallet.coin !== 'eth') return false;
 
     const currentTime = moment();
     const txTime = moment(tx.time * 1000);
@@ -554,7 +556,9 @@ export class WalletDetailsPage {
     return (
       currentTime.diff(txTime, 'hours') >= 4 &&
       this.isUnconfirmed(tx) &&
-      tx.action === 'received'
+      ((tx.action === 'received' && this.wallet.coin == 'btc') ||
+        ((tx.action === 'sent' || tx.action === 'moved') &&
+          this.wallet.coin === 'eth'))
     );
   }
 
@@ -605,7 +609,7 @@ export class WalletDetailsPage {
   }
 
   public doRefresh(refresher) {
-    this.updateAll({ force: true });
+    this.updateAll();
 
     setTimeout(() => {
       refresher.complete();
@@ -617,21 +621,68 @@ export class WalletDetailsPage {
   }
 
   public goToReceivePage() {
-    const params = {
-      wallet: this.wallet
-    };
-    const receive = this.actionSheetProvider.createWalletReceive(params);
-    receive.present();
-    receive.onDidDismiss(data => {
-      if (data === 'goToBackup') this.goToBackup();
-      else if (data) this.showErrorInfoSheet(data);
-    });
+    if (this.wallet && this.wallet.isComplete() && this.wallet.needsBackup) {
+      const needsBackup = this.actionSheetProvider.createNeedsBackup();
+      needsBackup.present();
+      needsBackup.onDidDismiss(data => {
+        if (data === 'goToBackup') this.goToBackup();
+      });
+    } else {
+      const params = {
+        wallet: this.wallet
+      };
+      const receive = this.actionSheetProvider.createWalletReceive(params);
+      receive.present();
+      receive.onDidDismiss(data => {
+        if (data) this.showErrorInfoSheet(data);
+      });
+    }
   }
 
   public goToSendPage() {
     this.navCtrl.push(SendPage, {
       wallet: this.wallet
     });
+  }
+
+  public goToExchangeCryptoPage() {
+    if (this.wallet && this.wallet.isComplete() && this.wallet.needsBackup) {
+      const needsBackup = this.actionSheetProvider.createNeedsBackup();
+      needsBackup.present();
+      needsBackup.onDidDismiss(data => {
+        if (data === 'goToBackup') this.goToBackup();
+      });
+    } else {
+      this.analyticsProvider.logEvent('exchange_crypto_button_clicked', {
+        from: 'walletDetails',
+        coin: this.wallet.coin
+      });
+      this.navCtrl.push(ExchangeCryptoPage, {
+        walletId: this.wallet.id
+      });
+    }
+  }
+
+  public goToBuyCryptoPage() {
+    if (this.wallet && this.wallet.isComplete() && this.wallet.needsBackup) {
+      const needsBackup = this.actionSheetProvider.createNeedsBackup();
+      needsBackup.present();
+      needsBackup.onDidDismiss(data => {
+        if (data === 'goToBackup') this.goToBackup();
+      });
+    } else {
+      this.analyticsProvider.logEvent('buy_crypto_button_clicked', {
+        from: 'walletDetails',
+        coin: this.wallet.coin
+      });
+      this.navCtrl.push(AmountPage, {
+        coin: this.wallet.coin,
+        fromBuyCrypto: true,
+        nextPage: 'CryptoOrderSummaryPage',
+        currency: this.configProvider.get().wallet.settings.alternativeIsoCode,
+        walletId: this.wallet.id
+      });
+    }
   }
 
   public showMoreOptions(): void {
@@ -668,6 +719,8 @@ export class WalletDetailsPage {
   private shareAddress(): void {
     if (!this.isCordova) return;
     this.walletProvider.getAddress(this.wallet, false).then(addr => {
+      if (this.platformProvider.isAndroid)
+        this.appProvider.skipLockModal = true;
       this.socialSharing.share(addr);
     });
   }
@@ -684,5 +737,222 @@ export class WalletDetailsPage {
     this.navCtrl.push(BackupKeyPage, {
       keyId: this.wallet.credentials.keyId
     });
+  }
+
+  public getBalance() {
+    const lastKnownBalance = this.wallet.lastKnownBalance;
+    if (this.wallet.coin === 'xrp') {
+      const availableBalanceStr =
+        this.wallet.cachedStatus &&
+        this.wallet.cachedStatus.availableBalanceStr;
+      return availableBalanceStr || lastKnownBalance;
+    } else {
+      const totalBalanceStr =
+        this.wallet.cachedStatus && this.wallet.cachedStatus.totalBalanceStr;
+      return totalBalanceStr || lastKnownBalance;
+    }
+  }
+
+  public getAlternativeBalance() {
+    if (this.wallet.coin === 'xrp') {
+      const availableAlternative =
+        this.wallet.cachedStatus &&
+        this.wallet.cachedStatus.availableBalanceAlternative;
+      return availableAlternative;
+    } else {
+      const totalBalanceAlternative =
+        this.wallet.cachedStatus &&
+        this.wallet.cachedStatus.totalBalanceAlternative;
+      return totalBalanceAlternative;
+    }
+  }
+
+  public async viewOnBlockchain() {
+    if (
+      this.wallet.coin !== 'eth' &&
+      this.wallet.coin !== 'xrp' &&
+      !this.currencyProvider.isERCToken(this.wallet.coin)
+    )
+      return;
+    const address = await this.walletProvider.getAddress(this.wallet, false);
+    let url;
+    if (this.wallet.coin === 'xrp') {
+      url =
+        this.wallet.credentials.network === 'livenet'
+          ? `https://${this.blockexplorerUrl}account/${address}`
+          : `https://${this.blockexplorerUrlTestnet}account/${address}`;
+    }
+    if (this.wallet.coin === 'eth') {
+      url =
+        this.wallet.credentials.network === 'livenet'
+          ? `https://${this.blockexplorerUrl}address/${address}`
+          : `https://${this.blockexplorerUrlTestnet}address/${address}`;
+    }
+    if (this.currencyProvider.isERCToken(this.wallet.coin)) {
+      url =
+        this.wallet.credentials.network === 'livenet'
+          ? `https://${this.blockexplorerUrl}address/${address}#tokentxns`
+          : `https://${this.blockexplorerUrlTestnet}address/${address}#tokentxns`;
+    }
+    let optIn = true;
+    let title = null;
+    let message = this.translate.instant('View History');
+    let okText = this.translate.instant('Open');
+    let cancelText = this.translate.instant('Go Back');
+    this.externalLinkProvider.open(
+      url,
+      optIn,
+      title,
+      message,
+      okText,
+      cancelText
+    );
+  }
+
+  getContactName(address: string) {
+    const existsContact = _.find(this.addressbook, c => c.address === address);
+    if (existsContact) return existsContact.name;
+    return null;
+  }
+
+  private async checkIfEthMultisigPendingInstantiation() {
+    this.logger.debug('Checking for eth multisig pending wallets');
+    const pendingInstantiations = await this.persistenceProvider.getEthMultisigPendingInstantiation(
+      this.wallet.id
+    );
+    if (!pendingInstantiations || !pendingInstantiations[0]) return;
+
+    this.logger.debug(
+      'Pending eth wallets found: ',
+      pendingInstantiations.length
+    );
+    const promises = [];
+    pendingInstantiations.forEach(async info => {
+      promises.push(
+        this.walletProvider.getMultisigContractInstantiationInfo(this.wallet, {
+          sender: info.sender,
+          txId: info.txId
+        })
+      );
+    });
+
+    Promise.all(promises).then(multisigContractInstantiationInfo => {
+      if (multisigContractInstantiationInfo.length > 0) {
+        this.logger.debug(
+          'Contract information found: ',
+          multisigContractInstantiationInfo.length
+        );
+
+        multisigContractInstantiationInfo.forEach((info, index) => {
+          if (!info[0]) return;
+
+          this.multisigPendingWallets.push({
+            multisigContractAddress: info[0].instantiation,
+            txId: info[0].transactionHash
+          });
+          const pendingInstantiation = pendingInstantiations.filter(info => {
+            return info.txId === this.multisigPendingWallets[index].txId;
+          });
+          this.multisigPendingWallets[index].walletName =
+            pendingInstantiation[0].walletName;
+          this.multisigPendingWallets[index].n = pendingInstantiation[0].n;
+          this.multisigPendingWallets[index].m = pendingInstantiation[0].m;
+        });
+      }
+    });
+  }
+
+  public createMultisigWallet(multisigWallet) {
+    this.logger.debug(
+      'Creating multisig wallet: ',
+      multisigWallet.multisigContractAddress
+    );
+
+    const multisigEthInfo = {
+      multisigContractAddress: multisigWallet.multisigContractAddress,
+      walletName: multisigWallet.walletName,
+      n: multisigWallet.n,
+      m: multisigWallet.m
+    };
+    this.createAndBindEthMultisigWallet(multisigEthInfo, multisigWallet.txId);
+  }
+
+  public createAndBindEthMultisigWallet(multisigEthInfo, txId) {
+    this.logger.debug('Multisig Info: ', JSON.stringify(multisigEthInfo));
+
+    this.profileProvider
+      .createMultisigEthWallet(this.wallet, multisigEthInfo)
+      .then(multisigWallet => {
+        // store preferences for the paired eth wallet
+        this.walletProvider.updateRemotePreferences(this.wallet);
+        this.removeMultisigWallet(txId);
+        this.navCtrl.popToRoot().then(_ => {
+          this.events.publish('Local/WalletListChange');
+          this.navCtrl.push(WalletDetailsPage, {
+            walletId: multisigWallet.id
+          });
+        });
+      });
+  }
+
+  public async removeMultisigWallet(txId) {
+    this.logger.debug('Removing multisig wallet: ', txId);
+    let pendingInstantiations = await this.persistenceProvider.getEthMultisigPendingInstantiation(
+      this.wallet.id
+    );
+    pendingInstantiations = pendingInstantiations.filter(info => {
+      return info.txId !== txId;
+    });
+    await this.persistenceProvider.setEthMultisigPendingInstantiation(
+      this.wallet.id,
+      pendingInstantiations
+    );
+    this.multisigPendingWallets = this.multisigPendingWallets.filter(
+      pendingWallet => {
+        return pendingWallet.txId !== txId;
+      }
+    );
+  }
+
+  public viewTxOnBlockchain(txId): void {
+    const url =
+      this.wallet.credentials.network === 'livenet'
+        ? `https://${this.blockexplorerUrl}tx/${txId}`
+        : `https://${this.blockexplorerUrlTestnet}tx/${txId}`;
+
+    let optIn = true;
+    let title = null;
+    let message = this.translate.instant('View Transaction');
+    let okText = this.translate.instant('Open');
+    let cancelText = this.translate.instant('Go Back');
+    this.externalLinkProvider.open(
+      url,
+      optIn,
+      title,
+      message,
+      okText,
+      cancelText
+    );
+  }
+
+  public viewAddressOnBlockchain(address): void {
+    const url =
+      this.wallet.credentials.network === 'livenet'
+        ? `https://${this.blockexplorerUrl}address/${address}`
+        : `https://${this.blockexplorerUrlTestnet}address/${address}`;
+
+    let optIn = true;
+    let title = null;
+    let message = this.translate.instant('View Address');
+    let okText = this.translate.instant('Open');
+    let cancelText = this.translate.instant('Go Back');
+    this.externalLinkProvider.open(
+      url,
+      optIn,
+      title,
+      message,
+      okText,
+      cancelText
+    );
   }
 }

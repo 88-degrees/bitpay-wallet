@@ -29,22 +29,6 @@
       </ion-toolbar>
     </expandable-header>
 
-    <div class="card clipboard-card" *ngIf="validDataFromClipboard">
-      <ion-item-divider>
-        <div class="title" item-start>
-          <img src="assets/img/paste-clipboard.svg" alt="Clipboard" width="20" />
-          <span>{{ 'Copied' | translate }} {{ validDataFromClipboard?.title }}</span>
-        </div>
-        <div item-end>
-          <button ion-button clear icon-only color="grey" (click)="hideClipboardCard()">
-            <ion-icon name="close"></ion-icon>
-          </button>
-        </div>
-      </ion-item-divider>
-      <page-clipboard-card [remainingTimeStr]="remainingTimeStr" [payProDetailsData]="payProDetailsData" [validDataFromClipboard]="validDataFromClipboard" (click)="processClipboardData(validDataFromClipboard.data)">
-      </page-clipboard-card>
-    </div>
-
     <create-new-wallet *ngIf="!walletsGroups || !walletsGroups[0]"></create-new-wallet>
 
     <div *ngFor="let walletGroup of walletsGroups; let i = index" class="wallets-container">
@@ -88,24 +72,24 @@
       </label-tip>
     </div>
 
-    <div *ngIf="showCoinbase && coinbaseLinked && coinbaseData">
+    <div *ngIf="showCoinbase && coinbaseLinked">
       <div class="section-header">
         <ion-icon class="item-img" item-start>
           <img src="assets/img/coinbase/coinbase-icon.png" width="20" />
         </ion-icon>
         <ion-label class="key-name">
-          <span *ngIf="!coinbaseData.user">...</span>
-          <span *ngIf="coinbaseData.user">{{ coinbaseData.user.name }}'s Coinbase Account</span>
+          <span *ngIf="!coinbaseData?.user">...</span>
+          <span *ngIf="coinbaseData?.user">{{ coinbaseData.user.name }}'s Coinbase Account</span>
         </ion-label>
         <div class="collapse">
-          <div class="collapse-btn" *ngIf="coinbaseData.accounts.length > 1" (click)="collapsedAccounts = !collapsedAccounts">
+          <div class="collapse-btn" *ngIf="coinbaseData?.accounts.length > 1" (click)="collapsedAccounts = !collapsedAccounts">
             <ion-icon *ngIf="!collapsedAccounts" name="ios-arrow-down"></ion-icon>
             <ion-icon *ngIf="collapsedAccounts" name="ios-arrow-up"></ion-icon>
           </div>
         </div>
       </div>
-      <div *ngIf="!coinbaseData.accounts" translate>Loading accounts...</div>
-      <div *ngFor="let ac of coinbaseData.accounts">
+      <div *ngIf="!coinbaseData?.accounts" translate>Loading accounts...</div>
+      <div *ngFor="let ac of coinbaseData?.accounts">
         <ion-list no-lines class="bp-list" [hidden]="collapsedAccounts">
           <button ion-item detail-none (click)="goToCoinbaseAccount(ac.id)">
             <coin-icon [coin]="ac.currency.code.toLowerCase()" [network]="livenet" item-left></coin-icon>
@@ -122,12 +106,5 @@
         </ion-list>
       </div>
     </div>
-
-    <div class="margin-helper"></div>
-
   </div>
-  <button *ngIf="walletsGroups && walletsGroups[0]" ion-button ion-fixed class="scan-button" (click)="scan()">
-    <ion-avatar item-start> <img src="assets/img/scan.svg" /> </ion-avatar>
-    <div translate>Scan</div>
-  </button>
 </ion-content>

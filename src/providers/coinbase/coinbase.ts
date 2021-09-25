@@ -10,10 +10,14 @@ import { ConfigProvider } from '../config/config';
 import { HomeIntegrationsProvider } from '../home-integrations/home-integrations';
 import { PersistenceProvider } from '../persistence/persistence';
 import { PlatformProvider } from '../platform/platform';
+import { RateProvider } from '../rate/rate';
 
 import { CurrencyProvider } from '../currency/currency';
+import { Coin } from '../tx-format/tx-format';
 
 import * as _ from 'lodash';
+
+const LIMIT: number = 100;
 
 @Injectable()
 export class CoinbaseProvider {
@@ -43,7 +47,8 @@ export class CoinbaseProvider {
     private configProvider: ConfigProvider,
     private appProvider: AppProvider,
     private currencyProvider: CurrencyProvider,
-    private analyticsProvider: AnalyticsProvider
+    private analyticsProvider: AnalyticsProvider,
+    private rateProvider: RateProvider
   ) {
     /*
      * Development: Gustavo's Account
@@ -59,6 +64,19 @@ export class CoinbaseProvider {
     };
   }
 
+  private getRandomHex(): string {
+    const characters = '0123456789abcdef';
+    let str = '';
+    for (let i = 0; i < 40; i++) {
+      str += characters[Math.floor(Math.random() * 16)];
+    }
+    return str;
+  }
+
+  public getCurrentState(): string {
+    return this.credentials.STATE;
+  }
+
   public setCredentials() {
     if (
       !this.appProvider.servicesInfo ||
@@ -69,12 +87,18 @@ export class CoinbaseProvider {
 
     const coinbase = this.appProvider.servicesInfo.coinbase;
 
-    this.credentials.REDIRECT_URI = this.platformProvider.isCordova
-      ? coinbase.redirect_uri.mobile
-      : coinbase.redirect_uri.desktop;
+    this.credentials.REDIRECT_URI =
+      this.platformProvider.isCordova && this.platformProvider.isIOS
+        ? coinbase.redirect_uri.mobile
+        : this.platformProvider.isAndroid
+        ? 'https://bitpay.com/oauth/coinbase/redirect'
+        : coinbase.redirect_uri.desktop;
 
     // Force to use specific version
     this.credentials.API_VERSION = '2017-10-31'; // TODO: there is a newest version: 2020-02-11
+
+    // Random string to protect against cross-site request forgery attacks
+    this.credentials.STATE = this.getRandomHex();
 
     if (this.environment == 'development') {
       /*
@@ -101,7 +125,9 @@ export class CoinbaseProvider {
         this.credentials.CLIENT_ID +
         '&redirect_uri=' +
         this.credentials.REDIRECT_URI +
-        '&account=all&state=SECURE_RANDOM&scope=' +
+        '&account=all&state=' +
+        this.credentials.STATE +
+        '&scope=' +
         this.credentials.SCOPE +
         '&meta[send_limit_amount]=1&meta[send_limit_currency]=USD&meta[send_limit_period]=day';
     } else {
@@ -130,7 +156,9 @@ export class CoinbaseProvider {
         this.credentials.CLIENT_ID +
         '&redirect_uri=' +
         this.credentials.REDIRECT_URI +
-        '&account=all&state=SECURE_RANDOM&scope=' +
+        '&account=all&state=' +
+        this.credentials.STATE +
+        '&scope=' +
         this.credentials.SCOPE +
         '&meta[send_limit_amount]=1000&meta[send_limit_currency]=USD&meta[send_limit_period]=day';
     }
@@ -138,6 +166,7 @@ export class CoinbaseProvider {
 
   public getNativeCurrencyBalance(amount, currency): string {
     if (!this.coinbaseExchange) return null;
+    if (!this.coinbaseExchange.rates[currency]) return null; // Coin rate has been removed from Coinbase
     return (amount / this.coinbaseExchange.rates[currency]).toFixed(2) || '0';
   }
 
@@ -326,7 +355,13 @@ export class CoinbaseProvider {
 
   public getAccounts(data?) {
     if (!this.isLinked()) return;
-    const availableCoins = this.currencyProvider.getAvailableCoins();
+    // Filter custom ERC-20 token
+    const availableCoins = _.filter(
+      this.currencyProvider.getAvailableCoins(),
+      coin => {
+        return !this.currencyProvider.isCustomERCToken(coin);
+      }
+    );
     if (data) data['accounts'] = this.coinbaseData['accounts'] || [];
     // go to coinbase to update data
     this._getAccounts().then(remoteData => {
@@ -341,9 +376,8 @@ export class CoinbaseProvider {
           accounts.push(allAccounts[i]);
         }
       }
-      const orderedAccounts = _.orderBy(accounts, ['name'], ['asc']);
-      if (data) data['accounts'] = orderedAccounts;
-      this.setAccounts(orderedAccounts);
+      if (data) data['accounts'] = accounts;
+      this.setAccounts(accounts);
     });
   }
 
@@ -409,7 +443,8 @@ export class CoinbaseProvider {
   }
 
   private _getAccounts(): Promise<any> {
-    const url = this.credentials.API + '/v2' + '/accounts';
+    const url =
+      this.credentials.API + '/v2' + '/accounts?order=asc&limit=' + LIMIT;
     const headers = {
       'Content-Type': 'application/json',
       Accept: 'application/json',
@@ -756,9 +791,142 @@ export class CoinbaseProvider {
           linked: this.linkedAccount,
           email: this.coinbaseData['user']['email'] || null,
           oldLinked, // Register OLD existent users -> show a different banner
-          type: 'exchange'
+          type: 'external-services'
         });
       });
+    });
+  }
+
+  public getAvailableAccounts(coin?, minFiatCurrency?: { amount; currency }) {
+    let coinbaseData = _.cloneDeep(this.coinbaseData);
+    let coinbaseAccounts = coinbaseData.accounts.filter(ac => {
+      const nativeBalance = this.getNativeCurrencyBalance(
+        ac.balance.amount,
+        ac.balance.currency
+      );
+      ac.nativeCurrencyStr = nativeBalance
+        ? nativeBalance + ' ' + this.coinbaseData['user']['native_currency']
+        : null;
+      const accountCoin = ac.balance.currency.toLowerCase();
+      if (minFiatCurrency) {
+        // check if it's crypto currency
+        const coin = Coin[minFiatCurrency.currency]
+          ? Coin[minFiatCurrency.currency]
+          : null;
+        if (coin) {
+          return coin == accountCoin;
+        }
+        const availableBalanceFiat = this.rateProvider.toFiat(
+          this.currencyProvider.getPrecision(accountCoin).unitToSatoshi *
+            Number(ac.balance.amount),
+          minFiatCurrency.currency,
+          accountCoin
+        );
+        return (
+          availableBalanceFiat >=
+          Number(
+            minFiatCurrency && minFiatCurrency.amount
+              ? minFiatCurrency.amount
+              : null
+          )
+        );
+      } else if (coin) {
+        return accountCoin == coin;
+      } else return ac;
+    });
+    return coinbaseAccounts;
+  }
+
+  public async payInvoice(
+    invoiceId: string,
+    currency: string,
+    twoFactorCode?: string
+  ): Promise<any> {
+    // Check for user data (if it needs new token, update it)
+    if (!(await this._checkAndRefreshExpiredToken()))
+      return Promise.reject(
+        'Could not authenticate with new token. Please reconnect Coinbase account to BitPay App.'
+      );
+
+    return this._payInvoice(invoiceId, currency, twoFactorCode);
+  }
+
+  private _payInvoice(
+    invoiceId: string,
+    currency: string,
+    twoFactorCode?: string
+  ): Promise<any> {
+    const url = 'https://bitpay.com/oauth/coinbase/pay/' + invoiceId;
+    const data = {
+      currency,
+      token: this.accessToken,
+      twoFactorCode
+    };
+    const headers = new HttpHeaders({
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    });
+    return new Promise((resolve, reject) => {
+      this.http.post(url, data, { headers }).subscribe(
+        data => {
+          this.logger.info('Coinbase: Pay invoice SUCCESS');
+          return resolve(data);
+        },
+        data => {
+          if (
+            data.error &&
+            data.error.errors &&
+            data.error.errors[0].id == 'two_factor_required'
+          ) {
+            this.logger.error('Coinbase: 2FA is required ' + data.status);
+            return reject('2fa'); // return string to identify
+          } else {
+            this.logger.error(
+              'Coinbase: Send Transaction ERROR ' + data.status
+            );
+            return reject(this.parseErrorsAsString(data.error));
+          }
+        }
+      );
+    });
+  }
+
+  private _checkAndRefreshExpiredToken(): Promise<boolean> {
+    const url = this.credentials.API + '/v2/user';
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'CB-VERSION': this.credentials.API_VERSION,
+      Authorization: 'Bearer ' + this.accessToken
+    };
+
+    this.logger.debug('Coinbase: Checking if token has expired...');
+    return new Promise((resolve, reject) => {
+      this.http.get(url, { headers }).subscribe(
+        _ => {
+          this.logger.info('Coinbase: Token is still valid!');
+          return resolve(true);
+        },
+        data => {
+          if (this.isExpiredTokenError(data.error.errors)) {
+            this.doRefreshToken()
+              .then(_ => {
+                return this._checkAndRefreshExpiredToken();
+              })
+              .catch(e => {
+                this.logger.warn(e);
+                setTimeout(() => {
+                  return this._checkAndRefreshExpiredToken();
+                }, 5000);
+              });
+          } else {
+            this.logger.error(
+              'Coinbase: Could not refresh expired token. ' + data.status
+            );
+            return reject(false);
+          }
+        }
+      );
     });
   }
 }

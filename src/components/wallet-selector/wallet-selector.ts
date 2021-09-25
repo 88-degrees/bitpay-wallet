@@ -9,6 +9,11 @@ export class WalletSelectorComponent extends ActionSheetParent {
   public walletsByKeys: any[];
   public title: string;
   public selectedWalletId: string;
+  public coinbaseData;
+  public fromWalletConnect: boolean;
+  public linkEthTokens: boolean;
+  public token;
+  public context: string;
 
   constructor() {
     super();
@@ -17,6 +22,11 @@ export class WalletSelectorComponent extends ActionSheetParent {
   ngOnInit() {
     this.title = this.params.title;
     this.selectedWalletId = this.params.selectedWalletId;
+    this.coinbaseData = this.params.coinbaseData;
+    this.fromWalletConnect = this.params.fromWalletConnect;
+    this.linkEthTokens = this.params.linkEthTokens;
+    this.token = this.params.token;
+    this.context = this.params.context;
     this.separateWallets();
   }
 
@@ -25,7 +35,20 @@ export class WalletSelectorComponent extends ActionSheetParent {
     this.walletsByKeys = _.values(_.groupBy(wallets, 'keyId'));
   }
 
-  public optionClicked(option): void {
-    this.dismiss(option);
+  public optionClicked(option, isCoinbaseAccount?: boolean): void {
+    if (this.context === 'topup' && ['xrp'].includes(option.coin)) {
+      return;
+    }
+    if (!isCoinbaseAccount) this.dismiss(option);
+    else {
+      const optionClicked = {
+        accountSelected: _.find(
+          this.coinbaseData.availableAccounts,
+          ac => ac.id == option
+        ),
+        isCoinbaseAccount
+      };
+      this.dismiss(optionClicked);
+    }
   }
 }

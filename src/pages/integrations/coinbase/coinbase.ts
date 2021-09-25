@@ -1,15 +1,14 @@
 import { Component } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { TranslateService } from '@ngx-translate/core';
-import { NavController, NavParams } from 'ionic-angular';
+import { NavController, NavParams, ViewController } from 'ionic-angular';
 
-// providers
+// Providers
 import { CoinbaseProvider } from '../../../providers/coinbase/coinbase';
 import { ExternalLinkProvider } from '../../../providers/external-link/external-link';
 import { OnGoingProcessProvider } from '../../../providers/on-going-process/on-going-process';
 import { PlatformProvider } from '../../../providers/platform/platform';
 import { PopupProvider } from '../../../providers/popup/popup';
-
 @Component({
   selector: 'page-coinbase',
   templateUrl: 'coinbase.html'
@@ -19,6 +18,7 @@ export class CoinbasePage {
   public showOauthForm: boolean;
   public oauthCodeForm: FormGroup;
   public linkedAccount: boolean;
+  public hasCredentials: boolean;
 
   private isElectron: boolean;
 
@@ -31,7 +31,8 @@ export class CoinbasePage {
     private onGoingProcessProvider: OnGoingProcessProvider,
     private navParams: NavParams,
     private translate: TranslateService,
-    private formBuilder: FormBuilder
+    private formBuilder: FormBuilder,
+    private viewCtrl: ViewController
   ) {
     this.oauthCodeForm = this.formBuilder.group({
       code: [
@@ -44,6 +45,8 @@ export class CoinbasePage {
   }
 
   ionViewWillEnter() {
+    this.hasCredentials = !!this.coinbaseProvider.oauthUrl;
+    if (!this.hasCredentials) return;
     if (this.navParams.data.code) {
       this.submitOauthCode(this.navParams.data.code);
     } else if (this.coinbaseProvider.isLinked()) {
@@ -62,6 +65,12 @@ export class CoinbasePage {
   public openAuthenticateWindow(): void {
     this.showOauthForm = true;
     if (!this.isElectron) {
+      if (this.navParams.data.isOnboardingFlow) {
+        this.navCtrl.remove(this.viewCtrl.index - 1).then(() => {
+          this.viewCtrl.dismiss();
+        });
+      }
+      if (this.platformProvider.isAndroid) this.backToWalletTabs();
       this.externalLinkProvider.open(this.coinbaseProvider.oauthUrl);
     } else {
       const { remote } = (window as any).require('electron');
@@ -71,7 +80,8 @@ export class CoinbasePage {
         center: true,
         webPreferences: {
           contextIsolation: false,
-          nodeIntegration: false
+          nodeIntegration: false,
+          worldSafeExecuteJavaScript: true
         }
       });
       win.once('ready-to-show', () => {
@@ -90,6 +100,20 @@ export class CoinbasePage {
   }
 
   private submitOauthCode(code: string): void {
+    // Security check
+    if (
+      !this.isElectron &&
+      !this.navParams.data.state &&
+      this.navParams.data.state != this.coinbaseProvider.getCurrentState()
+    ) {
+      this.popupProvider.ionicAlert(
+        this.translate.instant('Error connecting to Coinbase'),
+        this.translate.instant(
+          'You are using a different OAuthURL from original request or it has expired. Please try again.'
+        )
+      );
+      return;
+    }
     this.onGoingProcessProvider.set('connectingCoinbase');
     this.coinbaseProvider
       .linkAccount(code)

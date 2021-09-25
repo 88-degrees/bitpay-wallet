@@ -26,11 +26,13 @@ export interface GiftCardMap {
 
 const Keys = {
   ADDRESS_BOOK: network => 'addressbook-' + network,
+  NEW_ADDRESS_BOOK: network => 'addressbook-v2-' + network,
   AGREE_DISCLAIMER: 'agreeDisclaimer',
   GIFT_CARD_USER_INFO: 'amazonUserInfo', // keeps legacy key for backwards compatibility
   APP_IDENTITY: network => 'appIdentity-' + network,
   BACKUP: walletId => 'backup-' + walletId,
   BACKUP_WALLET_GROUP: keyId => 'walletGroupBackup-' + keyId,
+  TESTING_ADVERTISEMENTS: 'testingAdvertisements',
   BALANCE_CACHE: cardId => 'balanceCache-' + cardId,
   HISTORY_CACHE: cardId => 'historyCache-' + cardId,
   BITPAY_ACCOUNTS_V2: network => 'bitpayAccounts-v2-' + network,
@@ -53,6 +55,13 @@ const Keys = {
     const legacyGiftCardKey = getLegacyGiftCardKey(cardName, network);
     return legacyGiftCardKey || `giftCards-${cardName}-${network}`;
   },
+  HAS_REPORTED_FIREBASE_CREATED_WALLET: 'hasReportedFirebaseCreatedWallet',
+  HAS_REPORTED_FIREBASE_HAS_PHYSICAL_CARD: 'hasReportedFirebaseHasPhysicalCard',
+  HAS_REPORTED_FIREBASE_HAS_VIRTUAL_CARD: 'hasReportedFirebaseHasVirtualCard',
+  HAS_REPORTED_FIREBASE_HAS_FUNDED_CARD: 'hasFundedCard_2',
+  HAS_REPORTED_FIREBASE_SECURED_WALLET: 'hasSecuredWallet',
+  HAS_REPORTED_FIREBASE_HAS_FUNDED_WALLET: 'hasFundedWallet',
+  HAS_REPORTED_FIREBASE_HAS_NOT_FUNDED_WALLET: 'hasNotFundedWallet',
   HIDE_GIFT_CARD_DISCOUNT_ITEM: 'hideGiftCardDiscountItem',
   HIDE_BALANCE: walletId => 'hideBalance-' + walletId,
   TOTAL_BALANCE: 'totalBalance',
@@ -61,6 +70,9 @@ const Keys = {
   KEYS: 'keys',
   LAST_ADDRESS: walletId => 'lastAddress-' + walletId,
   LAST_CURRENCY_USED: 'lastCurrencyUsed',
+  LAST_COUNTRY_USED: 'buyCryptoLastCountry',
+  PHONE: 'phone',
+  PHONE_COUNTRY_INFO: 'phoneCountryInfo',
   PROFILE: 'profile',
   PROFILE_OLD: 'profileOld',
   REMOTE_PREF_STORED: 'remotePrefStored',
@@ -71,17 +83,26 @@ const Keys = {
   SERVER_MESSAGE_DISMISSED: messageId => 'serverMessageDismissed-' + messageId,
   RELEASE_MESSAGE_DISMISSED: 'releaseMessageDismissed',
   ADVERTISEMENT_DISMISSED: name => 'advertisementDismissed-' + name,
-  SHAPESHIFT_TOKEN: network => 'shapeshiftToken-' + network,
   WALLET_GROUP_NAME: keyId => `Key-${keyId}`,
   BITPAY_ID_PAIRING_TOKEN: network => `bitpayIdToken-${network}`,
   BITPAY_ID_USER_INFO: network => `bitpayIdUserInfo-${network}`,
   BITPAY_ID_SETTINGS: network => `bitpayIdSettings-${network}`,
-  APP_THEME: 'app-theme',
   USER_LOCATION: 'user-location',
-  COUNTRIES: 'countries'
+  COUNTRIES: 'countries',
+  CARD_FAST_TRACK_ENABLED: 'cardFastTrackEnabled',
+  TEMP_MDES_DEBUG_FLAG: 'tempMdesDebugFlag',
+  TEMP_MDES_CERT_ONLY_DEBUG_FLAG: 'tempMdesCertOnlyDebugFlag',
+  NETWORK: 'network',
+  CUSTOMTOKENSDATA: 'customTokensData',
+  CUSTOMTOKENSOPTS: 'customTokensOpts',
+  BITPAY_CARD_ORDER_STARTED: `bitPayCardOrderStarted`,
+  BITPAY_SURVEY_CARD_DISMISSED: `bitPaySurveyCardDismissed`,
+  ACCEPTED_SWAP_CRYPTO_DISCLAIMER: 'acceptedSwapCryptoDisclaimer',
+  CUSTOM_VIRTUAL_CARD_DESIGN: `customVirtualCardDesign`
 };
 
 interface Storage {
+  exists(k: string): Promise<boolean>;
   get(k: string): Promise<any>;
   set(k: string, v): Promise<void>;
   remove(k: string): Promise<void>;
@@ -158,6 +179,65 @@ export class PersistenceProvider {
     return this.storage.get(Keys.KEY_ONBOARDING);
   }
 
+  setHasReportedFirebaseWalletCreateFlag() {
+    return this.storage.set(Keys.HAS_REPORTED_FIREBASE_CREATED_WALLET, true);
+  }
+
+  getHasReportedFirebaseWalletCreateFlag() {
+    return this.storage.get(Keys.HAS_REPORTED_FIREBASE_CREATED_WALLET);
+  }
+
+  setHasReportedFirebaseHasPhysicalCardFlag() {
+    return this.storage.set(Keys.HAS_REPORTED_FIREBASE_HAS_PHYSICAL_CARD, true);
+  }
+
+  getHasReportedFirebaseHasPhysicalCardFlag() {
+    return this.storage.get(Keys.HAS_REPORTED_FIREBASE_HAS_PHYSICAL_CARD);
+  }
+
+  setHasReportedFirebaseHasVirtualCardFlag() {
+    return this.storage.set(Keys.HAS_REPORTED_FIREBASE_HAS_VIRTUAL_CARD, true);
+  }
+
+  getHasReportedFirebaseHasVirtualCardFlag() {
+    return this.storage.get(Keys.HAS_REPORTED_FIREBASE_HAS_VIRTUAL_CARD);
+  }
+
+  setHasReportedFirebaseHasFundedCard() {
+    return this.storage.set(Keys.HAS_REPORTED_FIREBASE_HAS_FUNDED_CARD, true);
+  }
+
+  getHasReportedFirebaseHasFundedCard() {
+    return this.storage.get(Keys.HAS_REPORTED_FIREBASE_HAS_FUNDED_CARD);
+  }
+
+  setHasReportedFirebaseHasFundedWallet() {
+    return this.storage.set(Keys.HAS_REPORTED_FIREBASE_HAS_FUNDED_WALLET, true);
+  }
+
+  getHasReportedFirebaseHasFundedWallet() {
+    return this.storage.get(Keys.HAS_REPORTED_FIREBASE_HAS_FUNDED_WALLET);
+  }
+
+  setHasReportedFirebaseNonFundedWallet() {
+    return this.storage.set(
+      Keys.HAS_REPORTED_FIREBASE_HAS_NOT_FUNDED_WALLET,
+      true
+    );
+  }
+
+  getHasReportedFirebasedNonFundedWallet() {
+    return this.storage.get(Keys.HAS_REPORTED_FIREBASE_HAS_NOT_FUNDED_WALLET);
+  }
+
+  setHasReportedFirebaseSecuredWallet() {
+    return this.storage.set(Keys.HAS_REPORTED_FIREBASE_SECURED_WALLET, true);
+  }
+
+  getHasReportedFirebaseSecuredWallet() {
+    return this.storage.get(Keys.HAS_REPORTED_FIREBASE_SECURED_WALLET);
+  }
+
   storeFocusedWalletId(walletId: string) {
     return this.storage.set(Keys.FOCUSED_WALLET_ID, walletId || '');
   }
@@ -190,6 +270,25 @@ export class PersistenceProvider {
     return this.storage.remove(Keys.BACKUP(walletId));
   }
 
+  getPhone() {
+    return this.storage.get(Keys.PHONE);
+  }
+
+  setPhone(phone: string) {
+    return this.storage.set(Keys.PHONE, phone);
+  }
+
+  getPhoneCountryInfo() {
+    return this.storage.get(Keys.PHONE_COUNTRY_INFO);
+  }
+
+  setPhoneCountryInfo(phoneCountryInfo: {
+    phoneCountryCode: string; // e.g. 1
+    countryIsoCode: string; // e.g. 'US'
+  }) {
+    return this.storage.set(Keys.PHONE_COUNTRY_INFO, phoneCountryInfo);
+  }
+
   setBackupGroupFlag(keyId: string, timestamp?) {
     timestamp = timestamp || Date.now();
     return this.storage.set(Keys.BACKUP_WALLET_GROUP(keyId), timestamp);
@@ -205,6 +304,21 @@ export class PersistenceProvider {
 
   setCleanAndScanAddresses(walletId: string) {
     return this.storage.set(Keys.CLEAN_AND_SCAN_ADDRESSES, walletId);
+  }
+
+  setTestingAdvertisements(isViewingTestAdvertisements: string) {
+    return this.storage.set(
+      Keys.TESTING_ADVERTISEMENTS,
+      isViewingTestAdvertisements
+    );
+  }
+
+  getTestingAdvertisments() {
+    return this.storage.get(Keys.TESTING_ADVERTISEMENTS);
+  }
+
+  removeTestingAdvertisments() {
+    return this.storage.remove(Keys.TESTING_ADVERTISEMENTS);
   }
 
   getCleanAndScanAddresses() {
@@ -316,16 +430,37 @@ export class PersistenceProvider {
     return this.storage.remove(Keys.COINBASE_TXS(network));
   }
 
-  setAddressBook(network: string, addressbook) {
-    return this.storage.set(Keys.ADDRESS_BOOK(network), addressbook);
+  existsNewAddressBook(network: string) {
+    return this.storage.exists(Keys.NEW_ADDRESS_BOOK(network));
   }
 
-  getAddressBook(network: string) {
-    return this.storage.get(Keys.ADDRESS_BOOK(network));
+  existsOldAddressBook(network: string) {
+    return this.storage.exists(Keys.ADDRESS_BOOK(network));
   }
 
-  removeAddressbook(network: string) {
-    return this.storage.remove(Keys.ADDRESS_BOOK(network));
+  setAddressBook(network: string, addressbook, newAddressBook: boolean = true) {
+    return this.storage.set(
+      newAddressBook
+        ? Keys.NEW_ADDRESS_BOOK(network)
+        : Keys.ADDRESS_BOOK(network),
+      addressbook
+    );
+  }
+
+  getAddressBook(network: string, newAddressBook: boolean = true) {
+    return this.storage.get(
+      newAddressBook
+        ? Keys.NEW_ADDRESS_BOOK(network)
+        : Keys.ADDRESS_BOOK(network)
+    );
+  }
+
+  removeAddressbook(network: string, newAddressBook: boolean = true) {
+    return this.storage.remove(
+      newAddressBook
+        ? Keys.NEW_ADDRESS_BOOK(network)
+        : Keys.ADDRESS_BOOK(network)
+    );
   }
 
   setLastCurrencyUsed(lastCurrencyUsed) {
@@ -334,6 +469,14 @@ export class PersistenceProvider {
 
   getLastCurrencyUsed() {
     return this.storage.get(Keys.LAST_CURRENCY_USED);
+  }
+
+  setLastCountryUsed(lastCountryUsed) {
+    return this.storage.set(Keys.LAST_COUNTRY_USED, lastCountryUsed);
+  }
+
+  getLastCountryUsed() {
+    return this.storage.get(Keys.LAST_COUNTRY_USED);
   }
 
   checkQuota() {
@@ -479,7 +622,9 @@ export class PersistenceProvider {
       email: string;
       token: string;
       familyName?: string; // last name
-      givenName?: string; // firstName
+      givenName?: string; // firstName,
+      incentiveLevel?: string;
+      incentiveLevelId?: string;
     }
   ) {
     return this.getBitpayAccounts(network).then(allAccounts => {
@@ -606,28 +751,40 @@ export class PersistenceProvider {
     return this.storage.remove(Keys.ADVERTISEMENT_DISMISSED(name));
   }
 
-  setShapeshift(network: string, gcs) {
-    return this.storage.set('shapeShift-' + network, gcs);
+  setChangelly(env: string, tx) {
+    return this.storage.set('changelly-' + env, tx);
   }
 
-  getShapeshift(network: string) {
-    return this.storage.get('shapeShift-' + network);
+  getChangelly(env: string) {
+    return this.storage.get('changelly-' + env);
   }
 
-  removeShapeshift(network: string) {
-    return this.storage.remove('shapeShift-' + network);
+  removeChangelly(env: string) {
+    return this.storage.remove('changelly-' + env);
   }
 
-  setShapeshiftToken(network: string, token: string) {
-    return this.storage.set(Keys.SHAPESHIFT_TOKEN(network), token);
+  setOneInch(env: string, tx) {
+    return this.storage.set('oneinch-' + env, tx);
   }
 
-  getShapeshiftToken(network: string) {
-    return this.storage.get(Keys.SHAPESHIFT_TOKEN(network));
+  getOneInch(env: string) {
+    return this.storage.get('oneinch-' + env);
   }
 
-  removeShapeshiftToken(network: string) {
-    return this.storage.remove(Keys.SHAPESHIFT_TOKEN(network));
+  removeOneInch(env: string) {
+    return this.storage.remove('oneinch-' + env);
+  }
+
+  setOneInchApprove(env: string, tx) {
+    return this.storage.set('oneinch-approve-' + env, tx);
+  }
+
+  getOneInchApprove(env: string) {
+    return this.storage.get('oneinch-approve-' + env);
+  }
+
+  removeOneInchApprove(env: string) {
+    return this.storage.remove('oneinch-approve-' + env);
   }
 
   setSimplex(env: string, paymentRequests) {
@@ -640,6 +797,18 @@ export class PersistenceProvider {
 
   removeSimplex(env: string) {
     return this.storage.remove('simplex-' + env);
+  }
+
+  setWyre(env: string, paymentRequests) {
+    return this.storage.set('wyre-' + env, paymentRequests);
+  }
+
+  getWyre(env: string) {
+    return this.storage.get('wyre-' + env);
+  }
+
+  removeWyre(env: string) {
+    return this.storage.remove('wyre-' + env);
   }
 
   setWalletOrder(walletId: string, order: number) {
@@ -678,6 +847,18 @@ export class PersistenceProvider {
     return this.storage.remove('lockStatus');
   }
 
+  setNewFeatureSlidesFlag(value: string) {
+    return this.storage.set('newFeatureSlides', value);
+  }
+
+  getNewFeatureSlidesFlag() {
+    return this.storage.get('newFeatureSlides');
+  }
+
+  removeNewFeatureSlidesFlag() {
+    return this.storage.remove('newFeatureSlides');
+  }
+
   setEmailLawCompliance(value: string) {
     return this.storage.set('emailLawCompliance', value);
   }
@@ -688,18 +869,6 @@ export class PersistenceProvider {
 
   removeEmailLawCompliance() {
     return this.storage.remove('emailLawCompliance');
-  }
-
-  setNewDesignSlidesFlag(value: string) {
-    return this.storage.set('newDesignSlides', value);
-  }
-
-  getNewDesignSlidesFlag() {
-    return this.storage.get('newDesignSlides');
-  }
-
-  removeNewDesignSlidesFlag() {
-    return this.storage.remove('newDesignSlides');
   }
 
   setHiddenFeaturesFlag(value: string) {
@@ -803,6 +972,30 @@ export class PersistenceProvider {
     return this.storage.remove('BitpayIdPairingFlag');
   }
 
+  getWalletConnect() {
+    return this.storage.get('walletConnectSession');
+  }
+
+  setWalletConnect(session) {
+    return this.storage.set('walletConnectSession', session);
+  }
+
+  removeWalletConnect() {
+    return this.storage.remove('walletConnectSession');
+  }
+
+  getWalletConnectPendingRequests() {
+    return this.storage.get('walletConnectPendingRequests');
+  }
+
+  setWalletConnectPendingRequests(pendingRequests: any[]) {
+    return this.storage.set('walletConnectPendingRequests', pendingRequests);
+  }
+
+  removeWalletConnectPendingRequests() {
+    return this.storage.remove('walletConnectPendingRequests');
+  }
+
   setWaitingListStatus(onList: string) {
     return this.storage.set('waitingListStatus', onList);
   }
@@ -822,20 +1015,123 @@ export class PersistenceProvider {
     return this.storage.get('reachedCardLimit');
   }
 
-  setAppTheme(value: string) {
-    return this.storage.set(Keys.APP_THEME, value);
-  }
-
-  getAppTheme() {
-    return this.storage.get(Keys.APP_THEME);
-  }
-
   setUserLocation(location: string) {
     return this.storage.set(Keys.USER_LOCATION, location);
   }
 
   getUserLocation() {
     return this.storage.get(Keys.USER_LOCATION);
+  }
+
+  setCardFastTrackEnabled(value: string) {
+    return this.storage.set(Keys.CARD_FAST_TRACK_ENABLED, value);
+  }
+
+  getCardFastTrackEnabled() {
+    return this.storage.get(Keys.CARD_FAST_TRACK_ENABLED);
+  }
+
+  setOnboardingFlowFlag(value: string) {
+    return this.storage.set('onboardingFlowFlag', value);
+  }
+
+  getOnboardingFlowFlag() {
+    return this.storage.get('onboardingFlowFlag');
+  }
+
+  setTempMdesFlag(value: string) {
+    return this.storage.set(Keys.TEMP_MDES_DEBUG_FLAG, value);
+  }
+
+  getTempMdesFlag() {
+    return this.storage.get(Keys.TEMP_MDES_DEBUG_FLAG);
+  }
+
+  setTempMdesCertOnlyFlag(value: string) {
+    return this.storage.set(Keys.TEMP_MDES_CERT_ONLY_DEBUG_FLAG, value);
+  }
+
+  getTempMdesCertOnlyFlag() {
+    return this.storage.get(Keys.TEMP_MDES_CERT_ONLY_DEBUG_FLAG);
+  }
+
+  setDynamicLink(deepLink: string) {
+    return this.storage.set('BitPay-DynamicLink', deepLink);
+  }
+
+  getDynamicLink() {
+    return this.storage.get('BitPay-DynamicLink');
+  }
+
+  removeDynamicLink() {
+    return this.storage.remove('BitPay-DynamicLink');
+  }
+
+  setNetwork(network: 'livenet' | 'testnet' | undefined) {
+    return this.storage.set(Keys.NETWORK, network);
+  }
+
+  getNetwork() {
+    return this.storage.get(Keys.NETWORK);
+  }
+
+  setCustomTokenData(customTokenData) {
+    return this.storage.set(Keys.CUSTOMTOKENSDATA, customTokenData);
+  }
+
+  getCustomTokenData() {
+    return this.storage.get(Keys.CUSTOMTOKENSDATA);
+  }
+
+  setCustomTokenOpts(customTokenOpts) {
+    return this.storage.set(Keys.CUSTOMTOKENSOPTS, customTokenOpts);
+  }
+
+  getCustomTokenOpts() {
+    return this.storage.get(Keys.CUSTOMTOKENSOPTS);
+  }
+
+  setEthMultisigPendingInstantiation(walletId, instantiationInfo) {
+    return this.storage.set(
+      `eth-multisig-instantiation-${walletId}`,
+      instantiationInfo
+    );
+  }
+
+  getEthMultisigPendingInstantiation(walletId) {
+    return this.storage.get(`eth-multisig-instantiation-${walletId}`);
+  }
+
+  setSwapCryptoDisclaimer(option: 'accepted') {
+    return this.storage.set(Keys.ACCEPTED_SWAP_CRYPTO_DISCLAIMER, option);
+  }
+
+  getSwapCryptoDisclaimer() {
+    return this.storage.get(Keys.ACCEPTED_SWAP_CRYPTO_DISCLAIMER);
+  }
+
+  setBitPayCardOrderStarted(ts: number) {
+    return this.storage.set(Keys.BITPAY_CARD_ORDER_STARTED, ts);
+  }
+
+  getBitPayCardOrderStarted() {
+    return this.storage.get(Keys.BITPAY_CARD_ORDER_STARTED);
+  }
+
+  setBitPaySurveyCardDismissed(ts: number) {
+    return this.storage.set(Keys.BITPAY_SURVEY_CARD_DISMISSED, ts);
+  }
+
+  getBitPaySurveyCardDismissed() {
+    return this.storage.get(Keys.BITPAY_SURVEY_CARD_DISMISSED);
+  }
+
+  getCustomVirtualCardDesign() {
+    return this.storage.get(Keys.CUSTOM_VIRTUAL_CARD_DESIGN);
+  }
+
+  setCustomVirtualCardDesign(currency) {
+    return this.storage.set(Keys.CUSTOM_VIRTUAL_CARD_DESIGN, currency);
   }
 }
 

@@ -22,7 +22,6 @@ import {
   TranslateModule,
   TranslateParser
 } from '@ngx-translate/core';
-import { ZXingScannerModule } from '@zxing/ngx-scanner';
 import { MomentModule } from 'angular2-moment';
 import { NgxBarcodeModule } from 'ngx-barcode';
 import { NgxQRCodeModule } from 'ngx-qrcode2';
@@ -48,6 +47,7 @@ import { CopyToClipboard } from '../directives/copy-to-clipboard/copy-to-clipboa
 import { ExternalizeLinks } from '../directives/externalize-links/externalize-links';
 import { FixedScrollBgColor } from '../directives/fixed-scroll-bg-color/fixed-scroll-bg-color';
 import { IonContentBackgroundColor } from '../directives/ion-content-background-color/ion-content-background-color';
+import { IonMask } from '../directives/ion-mask/ion-mask';
 import { LongPress } from '../directives/long-press/long-press';
 import { NavbarBg } from '../directives/navbar-bg/navbar-bg';
 import { NoLowFee } from '../directives/no-low-fee/no-low-fee';
@@ -61,6 +61,10 @@ import { COMPONENTS } from '../components/components';
 /* Providers */
 import { LanguageLoader } from '../providers/language-loader/language-loader';
 import { ProvidersModule } from '../providers/providers.module';
+
+/* Modal Transitions */
+import { ModalTranslateEnterTransition } from '../components/notification-component/transitions/on-enter-translate.transition';
+import { ModalTranslateLeaveTransition } from '../components/notification-component/transitions/on-leave-translate.transition';
 
 export function translateParserFactory() {
   return new InterpolatedTranslateParser();
@@ -87,6 +91,7 @@ export class MyMissingTranslationHandler implements MissingTranslationHandler {
     ExternalizeLinks,
     FixedScrollBgColor,
     IonContentBackgroundColor,
+    IonMask,
     LongPress,
     NavbarBg,
     NoLowFee,
@@ -132,8 +137,7 @@ export class MyMissingTranslationHandler implements MissingTranslationHandler {
         provide: TranslateLoader,
         useClass: LanguageLoader
       }
-    }),
-    ZXingScannerModule.forRoot()
+    })
   ],
   bootstrap: [IonicApp],
   entryComponents: [CopayApp, ...PAGES, ...COMPONENTS],
@@ -147,5 +151,18 @@ export class MyMissingTranslationHandler implements MissingTranslationHandler {
   schemas: [CUSTOM_ELEMENTS_SCHEMA]
 })
 export class AppModule {
-  constructor(public config: Config) {}
+  constructor(public config: Config) {
+    this.setCustomTransitions();
+  }
+
+  private setCustomTransitions() {
+    this.config.setTransition(
+      'modal-translate-up-enter',
+      ModalTranslateEnterTransition
+    );
+    this.config.setTransition(
+      'modal-translate-up-leave',
+      ModalTranslateLeaveTransition
+    );
+  }
 }

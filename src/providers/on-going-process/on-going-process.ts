@@ -25,13 +25,15 @@ export class OnGoingProcessProvider {
       broadcastingTx: this.translate.instant('Broadcasting transaction...'),
       calculatingFee: this.translate.instant('Calculating fee...'),
       calculatingSendMax: this.translate.instant('Calculating send max...'),
+      connectingOneInch: this.translate.instant('Connecting to 1Inch...'),
       connectingCoinbase: this.translate.instant('Connecting to Coinbase...'),
-      connectingShapeshift: this.translate.instant(
-        'Connecting to ShapeShift...'
-      ),
       creatingTx: this.translate.instant('Creating transaction...'),
       creatingWallet: this.translate.instant('Creating Wallet...'),
+      creatingEthMultisigWallet: this.translate.instant(
+        'Creating ETH multisig wallet. Please wait...'
+      ),
       deletingWallet: this.translate.instant('Deleting Wallet...'),
+      exchangeCryptoInit: this.translate.instant('Initializing Swap Crypto...'),
       extractingWalletInfo: this.translate.instant(
         'Extracting Wallet information...'
       ),
@@ -42,8 +44,8 @@ export class OnGoingProcessProvider {
       generatingCSV: this.translate.instant('Generating .csv file...'),
       gettingFeeLevels: this.translate.instant('Getting fee levels...'),
       importingWallet: this.translate.instant('Importing Wallet...'),
+      syncWallets: this.translate.instant('Syncing Wallets...'),
       joiningWallet: this.translate.instant('Joining Wallet...'),
-      recreating: this.translate.instant('Recreating Wallet...'),
       rejectTx: this.translate.instant('Rejecting payment proposal...'),
       removeTx: this.translate.instant('Deleting payment proposal...'),
       retrievingInputs: this.translate.instant(
@@ -72,7 +74,16 @@ export class OnGoingProcessProvider {
       buyingGiftCard: this.translate.instant('Buying Gift Card...'),
       topup: this.translate.instant('Top up in progress...'),
       duplicatingWallet: this.translate.instant('Duplicating wallet...'),
-      connectingBitPayId: this.translate.instant('Connecting BitPay ID...')
+      connectingBitPayId: this.translate.instant('Connecting BitPay ID...'),
+      processingOrderReservation: this.translate.instant(
+        'Processing order reservation...'
+      ),
+      payingWithCoinbase: this.translate.instant(
+        'Paying with a Coinbase Account...'
+      ),
+      generalAwaiting: this.translate.instant(
+        "Just a second, we're setting a few things up."
+      )
     };
     return processNames;
   }

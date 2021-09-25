@@ -24,7 +24,7 @@ export class PurchasedCardsPage {
 
   constructor(
     protected actionSheetProvider: ActionSheetProvider,
-    protected giftCardProvider: GiftCardProvider,
+    public giftCardProvider: GiftCardProvider,
     protected logger: Logger,
     protected navCtrl: NavController,
     protected navParams: NavParams
@@ -35,6 +35,7 @@ export class PurchasedCardsPage {
     this.cardConfig = await this.giftCardProvider.getCardConfig(cardName);
     await this.getCards();
     this.listenForUpdates();
+    this.giftCardProvider.refreshActiveGiftCards();
   }
 
   async ionViewDidLoad() {

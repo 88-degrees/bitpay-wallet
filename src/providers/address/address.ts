@@ -12,11 +12,15 @@ export interface CoinNetwork {
 export class AddressProvider {
   private bitcore;
   private bitcoreCash;
+  private bitcoreDoge;
+  private bitcoreLtc;
   private core;
 
   constructor(private bwcProvider: BwcProvider, private logger: Logger) {
     this.bitcore = this.bwcProvider.getBitcore();
     this.bitcoreCash = this.bwcProvider.getBitcoreCash();
+    this.bitcoreDoge = this.bwcProvider.getBitcoreDoge();
+    this.bitcoreLtc = this.bwcProvider.getBitcoreLtc();
     this.core = this.bwcProvider.getCore();
   }
 
@@ -68,10 +72,20 @@ export class AddressProvider {
             if (isValidXrpAddress) {
               return { coin: 'xrp', network };
             } else {
-              return null;
+              throw isValidXrpAddress;
             }
           } catch (e) {
-            return null;
+            try {
+              network = this.bitcoreDoge.Address(address).network.name;
+              return { coin: 'doge', network };
+            } catch (e) {
+              try {
+                network = this.bitcoreLtc.Address(address).network.name;
+                return { coin: 'ltc', network };
+              } catch (e) {
+                return null;
+              }
+            }
           }
         }
       }
@@ -83,13 +97,20 @@ export class AddressProvider {
     // Check if the input is a valid uri or address
     const URI = this.bitcore.URI;
     const Address = this.bitcore.Address;
-    const URICash = this.bitcoreCash.URI;
     const AddressCash = this.bitcoreCash.Address;
+    const URICash = this.bitcoreCash.URI;
+    const AddressDoge = this.bitcoreDoge.Address;
+    const URIDoge = this.bitcoreDoge.URI;
+    const AddressLtc = this.bitcoreLtc.Address;
+    const URILtc = this.bitcoreLtc.URI;
+
     const { Validation } = this.core;
 
     // Bip21 uri
     if (URI.isValid(str)) return true;
     if (URICash.isValid(str)) return true;
+    if (URIDoge.isValid(str)) return true;
+    if (URILtc.isValid(str)) return true;
     if (Validation.validateUri('ETH', str)) return true;
     if (Validation.validateUri('XRP', str)) return true;
 
@@ -98,6 +119,10 @@ export class AddressProvider {
     if (Address.isValid(str, 'testnet')) return true;
     if (AddressCash.isValid(str, 'livenet')) return true;
     if (AddressCash.isValid(str, 'testnet')) return true;
+    if (AddressDoge.isValid(str, 'livenet')) return true;
+    if (AddressDoge.isValid(str, 'testnet')) return true;
+    if (AddressLtc.isValid(str, 'livenet')) return true;
+    if (AddressLtc.isValid(str, 'testnet')) return true;
     if (Validation.validateAddress('XRP', 'livenet', str)) return true;
     if (Validation.validateAddress('ETH', 'livenet', str)) return true;
 

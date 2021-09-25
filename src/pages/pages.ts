@@ -3,19 +3,37 @@ import { AddWalletPage } from '../pages/add-wallet/add-wallet';
 import { AddPage } from '../pages/add/add';
 import { CopayersPage } from '../pages/add/copayers/copayers';
 import { CreateWalletPage } from '../pages/add/create-wallet/create-wallet';
+import { ConfirmAddTokenModalPage } from '../pages/add/custom-token/confirm-add-token-modal/confirm-add-token-modal';
+import { CustomTokenPage } from '../pages/add/custom-token/custom-token';
 import { ImportWalletPage } from '../pages/add/import-wallet/import-wallet';
 import { JoinWalletPage } from '../pages/add/join-wallet/join-wallet';
 import { SelectCurrencyPage } from '../pages/add/select-currency/select-currency';
 import { BackupGamePage } from '../pages/backup/backup-game/backup-game';
 import { BackupKeyPage } from '../pages/backup/backup-key/backup-key';
+import { CountrySelectorPage } from '../pages/buy-crypto/country-selector/country-selector';
+import { CryptoOffersPage } from '../pages/buy-crypto/crypto-offers/crypto-offers';
+import { CryptoOrderSummaryPage } from '../pages/buy-crypto/crypto-order-summary/crypto-order-summary';
+import { CryptoPaymentMethodPage } from '../pages/buy-crypto/crypto-payment-method/crypto-payment-method';
+import { CryptoSettingsPage } from '../pages/buy-crypto/crypto-settings/crypto-settings';
+import { ChooseFeeLevelModal } from '../pages/choose-fee-level/choose-fee-level';
+import { CoinAndWalletSelectorPage } from '../pages/coin-and-wallet-selector/coin-and-wallet-selector';
+import { ExchangeCheckoutPage } from '../pages/exchange-crypto/exchange-checkout/exchange-checkout';
+import { ExchangeCryptoPage } from '../pages/exchange-crypto/exchange-crypto';
+import { ExchangeCryptoSettingsPage } from '../pages/exchange-crypto/exchange-crypto-settings/exchange-crypto-settings';
 import { SendFeedbackPage } from '../pages/feedback/send-feedback/send-feedback';
 import { FinishModalPage } from '../pages/finish/finish';
+import { NewFeaturePage } from '../pages/new-feature/new-feature';
+import { AddFundsPage } from '../pages/onboarding/add-funds/add-funds';
 import { CollectEmailPage } from '../pages/onboarding/collect-email/collect-email';
 import { DisclaimerPage } from '../pages/onboarding/disclaimer/disclaimer';
-import { OnboardingPage } from '../pages/onboarding/onboarding';
+import { FeatureEducationPage } from '../pages/onboarding/feature-education/feature-education';
+import { LockMethodPage } from '../pages/onboarding/lock-method/lock-method';
+import { RecoveryKeyPage } from '../pages/onboarding/recovery-key/recovery-key';
 import { PaperWalletPage } from '../pages/paper-wallet/paper-wallet';
 import { SlideToAcceptPage } from '../pages/slide-to-accept/slide-to-accept';
 import { TabsPage } from '../pages/tabs/tabs';
+import { TokenSwapApprovePage } from '../pages/token-swap/token-swap-approve/token-swap-approve';
+import { TokenSwapCheckoutPage } from '../pages/token-swap/token-swap-checkout/token-swap-checkout';
 import { TxDetailsModal } from '../pages/tx-details/tx-details';
 import { TxpDetailsPage } from '../pages/txp-details/txp-details';
 import { SearchTxModalPage } from '../pages/wallet-details/search-tx-modal/search-tx-modal';
@@ -25,6 +43,11 @@ import { WalletDetailsPage } from '../pages/wallet-details/wallet-details';
 // Integrations: Invoice
 import { SelectInvoicePage } from '../pages/integrations/invoice/select-invoice/select-invoice';
 
+// Integrations: Changelly
+import { ChangellyPage } from '../pages/integrations/changelly/changelly';
+import { ChangellyDetailsPage } from '../pages/integrations/changelly/changelly-details/changelly-details';
+import { ChangellyTermsPage } from '../pages/integrations/changelly/changelly-terms/changelly-terms';
+
 // Integrations: Coinbase
 import { CoinbasePage } from '../pages/integrations/coinbase/coinbase';
 import { CoinbaseAccountPage } from '../pages/integrations/coinbase/coinbase-account/coinbase-account';
@@ -32,18 +55,22 @@ import { CoinbaseSettingsPage } from '../pages/integrations/coinbase/coinbase-se
 import { CoinbaseTxDetailsPage } from '../pages/integrations/coinbase/coinbase-tx-details/coinbase-tx-details';
 import { CoinbaseWithdrawPage } from '../pages/integrations/coinbase/coinbase-withdraw/coinbase-withdraw';
 
-// Integrations: ShapeShift
-import { ShapeshiftPage } from '../pages/integrations/shapeshift/shapeshift';
-import { ShapeshiftConfirmPage } from '../pages/integrations/shapeshift/shapeshift-confirm/shapeshift-confirm';
-import { ShapeshiftDetailsPage } from '../pages/integrations/shapeshift/shapeshift-details/shapeshift-details';
-import { ShapeshiftSettingsPage } from '../pages/integrations/shapeshift/shapeshift-settings/shapeshift-settings';
-import { ShapeshiftShiftPage } from '../pages/integrations/shapeshift/shapeshift-shift/shapeshift-shift';
+// Integrations: OneInch
+import { OneInchPage } from '../pages/integrations/one-inch/one-inch';
+import { OneInchDetailsPage } from '../pages/integrations/one-inch/one-inch-details/one-inch-details';
 
 // Integrations: Simplex
 import { SimplexPage } from '../pages/integrations/simplex/simplex';
-import { SimplexBuyPage } from '../pages/integrations/simplex/simplex-buy/simplex-buy';
 import { SimplexDetailsPage } from '../pages/integrations/simplex/simplex-details/simplex-details';
-import { SimplexSettingsPage } from '../pages/integrations/simplex/simplex-settings/simplex-settings';
+
+// Integrations: Wyre
+import { WyrePage } from '../pages/integrations/wyre/wyre';
+import { WyreDetailsPage } from '../pages/integrations/wyre/wyre-details/wyre-details';
+
+// Integrations: Wallet Connect
+import { WalletConnectPage } from '../pages/integrations/wallet-connect/wallet-connect';
+import { WalletConnectRequestDetailsPage } from '../pages/integrations/wallet-connect/wallet-connect-request-details/wallet-connect-request-details';
+import { WalletConnectSettingsPage } from '../pages/integrations/wallet-connect/wallet-connect-settings/wallet-connect-settings';
 
 // Integrations: BitPayCard
 import { BitPayCardPage } from '../pages/integrations/bitpay-card/bitpay-card';
@@ -91,10 +118,11 @@ import { AltCurrencyPage } from '../pages/settings/alt-currency/alt-currency';
 import { BitPayIdPage } from '../pages/settings/bitpay-id/bitpay-id';
 import { FeePolicyPage } from '../pages/settings/fee-policy/fee-policy';
 import { LanguagePage } from '../pages/settings/language/language';
+import { LocalThemePage } from '../pages/settings/local-theme/local-theme';
 import { LockPage } from '../pages/settings/lock/lock';
+import { NavigationPage } from '../pages/settings/navigation/navigation';
 import { NotificationsPage } from '../pages/settings/notifications/notifications';
 import { SharePage } from '../pages/settings/share/share';
-import { ThemePage } from '../pages/settings/theme/theme';
 
 /* Wallet Group Settings */
 import { ClearEncryptPasswordPage } from '../pages/settings/key-settings/clear-encrypt-password/clear-encrypt-password';
@@ -122,6 +150,7 @@ import { WalletServiceUrlPage } from '../pages/settings/wallet-settings/wallet-s
 import { WalletTransactionHistoryPage } from '../pages/settings/wallet-settings/wallet-settings-advanced/wallet-transaction-history/wallet-transaction-history';
 
 /* Send */
+import { CreateEthMultisigPage } from '../pages/add/create-eth-multisig/create-eth-multisig';
 import { AmountPage } from '../pages/send/amount/amount';
 import { ConfirmPage } from '../pages/send/confirm/confirm';
 import { MultiSendPage } from '../pages/send/multi-send/multi-send';
@@ -155,13 +184,28 @@ export const PAGES = [
   BitPayCardTopUpPage,
   BitPayIdPage,
   CardCatalogPage,
+  ChangellyDetailsPage,
+  ChangellyPage,
+  ChangellyTermsPage,
   CreateWalletPage,
+  CustomTokenPage,
   CreateNewWalletPage,
   CoinbaseAccountPage,
   CoinbasePage,
   CoinbaseTxDetailsPage,
   CoinbaseWithdrawPage,
+  OneInchPage,
+  OneInchDetailsPage,
+  CoinAndWalletSelectorPage,
   CopayersPage,
+  CountrySelectorPage,
+  CryptoPaymentMethodPage,
+  CryptoOrderSummaryPage,
+  CryptoOffersPage,
+  CryptoSettingsPage,
+  ExchangeCheckoutPage,
+  ExchangeCryptoPage,
+  ExchangeCryptoSettingsPage,
   SelectInputsPage,
   FeedbackCardPage,
   SharePage,
@@ -169,12 +213,17 @@ export const PAGES = [
   JoinWalletPage,
   BackupGamePage,
   BackupKeyPage,
+  CreateEthMultisigPage,
   ConfirmPage,
   MultiSendPage,
   TransferToModalPage,
   TransferToPage,
   CustomAmountPage,
   DisclaimerPage,
+  AddFundsPage,
+  FeatureEducationPage,
+  LockMethodPage,
+  RecoveryKeyPage,
   CollectEmailPage,
   ...GIFT_CARD_PAGES,
   GravatarPage,
@@ -182,11 +231,11 @@ export const PAGES = [
   HomePage,
   CardsPage,
   WalletsPage,
+  FeePolicyPage,
   LanguagePage,
   LockPage,
   MerchantPage,
   MultipleOutputsPage,
-  OnboardingPage,
   PaperWalletPage,
   ...PIN_COMPONENTS,
   PricePage,
@@ -197,22 +246,19 @@ export const PAGES = [
   SelectCurrencyPage,
   SelectInvoicePage,
   CoinbaseSettingsPage,
-  ShapeshiftConfirmPage,
-  ShapeshiftDetailsPage,
-  ShapeshiftSettingsPage,
-  ShapeshiftPage,
-  ShapeshiftShiftPage,
   SimplexPage,
-  SimplexBuyPage,
   SimplexDetailsPage,
-  SimplexSettingsPage,
+  WyrePage,
+  WyreDetailsPage,
   NotificationsPage,
-  FeePolicyPage,
   SearchTxModalPage,
+  ConfirmAddTokenModalPage,
   SessionLogPage,
   SendFeedbackPage,
   FinishModalPage,
   TabsPage,
+  TokenSwapApprovePage,
+  TokenSwapCheckoutPage,
   TxpDetailsPage,
   TxDetailsModal,
   TxpPage,
@@ -232,15 +278,21 @@ export const PAGES = [
   KeySettingsPage,
   KeyNamePage,
   KeyOnboardingPage,
+  WalletConnectPage,
+  WalletConnectSettingsPage,
+  WalletConnectRequestDetailsPage,
   WalletDetailsPage,
   WalletRecoverPage,
   WalletMnemonicRecoverPage,
   WalletBalanceModal,
+  ChooseFeeLevelModal,
   WideHeaderPage,
   CardItemPage,
   CoinSelectorPage,
   SlideToAcceptPage,
-  ThemePage,
+  LocalThemePage,
+  NavigationPage,
+  NewFeaturePage,
   // Phases: card pages
   PhaseOneCardIntro
 ];

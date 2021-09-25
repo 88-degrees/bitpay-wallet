@@ -6,21 +6,25 @@ import encoding from 'text-encoding';
 
 // Providers
 import { AddressProvider } from '../address/address';
+import { AppProvider } from '../app/app';
 import { BwcErrorProvider } from '../bwc-error/bwc-error';
 import { BwcProvider } from '../bwc/bwc';
 import { ConfigProvider } from '../config/config';
-import { Coin, CurrencyProvider } from '../currency/currency';
+import { CurrencyProvider } from '../currency/currency';
 import { FeeProvider } from '../fee/fee';
 import { FilterProvider } from '../filter/filter';
 import { KeyProvider } from '../key/key';
 import { LanguageProvider } from '../language/language';
 import { Logger } from '../logger/logger';
+import { LogsProvider } from '../logs/logs';
 import { OnGoingProcessProvider } from '../on-going-process/on-going-process';
 import { PersistenceProvider } from '../persistence/persistence';
+import { PlatformProvider } from '../platform/platform';
 import { PopupProvider } from '../popup/popup';
 import { RateProvider } from '../rate/rate';
 import { TouchIdProvider } from '../touchid/touchid';
 import { TxFormatProvider } from '../tx-format/tx-format';
+import { ZceProvider } from '../zce/zce';
 
 export interface HistoryOptionsI {
   limitTx?: string;
@@ -38,7 +42,7 @@ export interface WalletOptions {
   networkName: string;
   bwsurl: any;
   singleAddress: any;
-  coin: Coin;
+  coin: string;
   extendedPrivateKey: any;
   mnemonic: any;
   derivationStrategy: any;
@@ -54,6 +58,7 @@ export interface WalletOptions {
 
 export interface TransactionProposal {
   coin: string;
+  chain: string;
   amount: any;
   from: string;
   toAddress: any;
@@ -62,6 +67,7 @@ export interface TransactionProposal {
     amount: any;
     message: string;
     data?: string;
+    gasLimit?: number;
   }>;
   inputs: any;
   fee: any;
@@ -69,6 +75,8 @@ export interface TransactionProposal {
   customData?: {
     service?: string;
     giftCardName?: string;
+    changelly?: string;
+    oneInch?: string;
     shapeShift?: string;
     toWalletName?: any;
   };
@@ -80,6 +88,10 @@ export interface TransactionProposal {
   tokenAddress?: string;
   destinationTag?: string;
   invoiceID?: string;
+  multisigGnosisContractAddress?: string;
+  multisigContractAddress?: string;
+  instantAcceptanceEscrow?: number;
+  isTokenSwap?: boolean;
 }
 
 @Injectable()
@@ -122,7 +134,11 @@ export class WalletProvider {
     private translate: TranslateService,
     private addressProvider: AddressProvider,
     private languageProvider: LanguageProvider,
-    private keyProvider: KeyProvider
+    private keyProvider: KeyProvider,
+    private platformProvider: PlatformProvider,
+    private logsProvider: LogsProvider,
+    private appProvider: AppProvider,
+    private zceProvider: ZceProvider
   ) {
     this.logger.debug('WalletProvider initialized');
     this.isPopupOpen = false;
@@ -160,7 +176,7 @@ export class WalletProvider {
             copayerId: tx.wallet.copayerId
           });
 
-          if (!action && tx.status == 'pending') {
+          if ((!action || action.type === 'failed') && tx.status == 'pending') {
             tx.pendingForUs = true;
           }
 
@@ -362,10 +378,16 @@ export class WalletProvider {
           }
 
           tries = tries || 0;
-          const { token } = wallet.credentials;
+          const { token, multisigEthInfo } = wallet.credentials;
 
           wallet.getStatus(
-            { tokenAddress: token ? token.address : '' },
+            {
+              tokenAddress: token ? token.address : '',
+              multisigContractAddress: multisigEthInfo
+                ? multisigEthInfo.multisigContractAddress
+                : '',
+              network: wallet.network
+            },
             (err, status) => {
               if (err) {
                 if (err instanceof this.errors.NOT_AUTHORIZED) {
@@ -462,10 +484,15 @@ export class WalletProvider {
     return balanceLastDay ? balanceLastDay.toFixed(2) : '0.00';
   }
 
-  private calcTotalAmount(statusWallet, wallet, isoCode, lastDayRatesArray) {
+  private calcTotalAmount(wallet, isoCode, lastDayRatesArray) {
+    const statusWallet = wallet.cachedStatus;
     let walletTotalBalanceAlternative = 0;
     let walletTotalBalanceAlternativeLastDay = 0;
-    if (wallet.network === 'livenet' && !wallet.hidden) {
+    if (
+      wallet.network === 'livenet' &&
+      !wallet.hidden &&
+      !_.isEmpty(statusWallet)
+    ) {
       const balance =
         wallet.coin === 'xrp'
           ? statusWallet.availableBalanceSat
@@ -491,23 +518,11 @@ export class WalletProvider {
   public async getTotalAmount(wallets, lastDayRatesArray) {
     const isoCode =
       this.configProvider.get().wallet.settings.alternativeIsoCode || 'USD';
-    if (_.isEmpty(wallets))
-      return {
-        isoCode,
-        totalBalanceAlternative: '0',
-        averagePrice: 0
-      };
-
     const totalAmountArray = [];
 
     _.each(wallets, wallet => {
       totalAmountArray.push(
-        this.calcTotalAmount(
-          wallet.cachedStatus,
-          wallet,
-          isoCode,
-          lastDayRatesArray
-        )
+        this.calcTotalAmount(wallet, isoCode, lastDayRatesArray)
       );
     });
 
@@ -522,14 +537,14 @@ export class WalletProvider {
     const difference =
       parseFloat(totalBalanceAlternative.replace(/,/g, '')) -
       parseFloat(totalBalanceAlternativeLastDay.replace(/,/g, ''));
-    const averagePrice =
+    const totalBalanceChange =
       (difference * 100) /
       parseFloat(totalBalanceAlternative.replace(/,/g, ''));
 
     return {
       totalBalanceAlternativeIsoCode: isoCode,
       totalBalanceAlternative,
-      averagePrice
+      totalBalanceChange: totalBalanceChange || 0
     };
   }
 
@@ -550,13 +565,21 @@ export class WalletProvider {
     });
   }
 
-  public getAddressView(coin: Coin, network: string, address: string): string {
+  public getAddressView(
+    coin: string,
+    network: string,
+    address: string
+  ): string {
     if (coin != 'bch') return address;
     const protoAddr = this.getProtoAddress(coin, network, address);
     return protoAddr;
   }
 
-  public getProtoAddress(coin: Coin, network: string, address: string): string {
+  public getProtoAddress(
+    coin: string,
+    network: string,
+    address: string
+  ): string {
     const proto: string = this.getProtocolHandler(coin, network);
     const protoAddr: string = proto + ':' + address;
     return protoAddr;
@@ -565,7 +588,10 @@ export class WalletProvider {
   public getAddress(wallet, forceNew: boolean): Promise<string> {
     return new Promise((resolve, reject) => {
       let walletId = wallet.id;
-      const { token } = wallet.credentials;
+      const { token, multisigEthInfo } = wallet.credentials;
+      if (multisigEthInfo && multisigEthInfo.multisigContractAddress) {
+        return resolve(multisigEthInfo.multisigContractAddress);
+      }
 
       if (token) {
         walletId = wallet.id.replace(`-${token.address}`, '');
@@ -691,13 +717,15 @@ export class WalletProvider {
         shouldContinue: res.length >= limit
       };
 
-      const { token } = wallet.credentials;
-
+      const { token, multisigEthInfo } = wallet.credentials;
       wallet.getTxHistory(
         {
           skip,
           limit,
-          tokenAddress: token ? token.address : ''
+          tokenAddress: token ? token.address : '',
+          multisigContractAddress: multisigEthInfo
+            ? multisigEthInfo.multisigContractAddress
+            : ''
         },
         (err: Error, txsFromServer) => {
           if (err) return reject(err);
@@ -714,6 +742,23 @@ export class WalletProvider {
           return resolve(result);
         }
       );
+    });
+  }
+
+  clearWalletCache(wallet): Promise<boolean> {
+    return new Promise(resolve => {
+      const config = this.configProvider.get();
+      const defaults = this.configProvider.getDefaults();
+      const bws_url =
+        (config.bwsFor && config.bwsFor[wallet.id]) || defaults.bws.url;
+      this.bwcProvider
+        .getClient(JSON.stringify(wallet.credentials), {
+          bwsurl: bws_url
+        })
+        .clearCache(err => {
+          if (err) resolve(false);
+          return resolve(true);
+        });
     });
   }
 
@@ -770,19 +815,24 @@ export class WalletProvider {
       this.getSavedTxs(walletId)
         .then(txsFromLocal => {
           fixTxsUnit(txsFromLocal);
-
-          const confirmedTxs = this.removeAndMarkSoftConfirmedTx(txsFromLocal);
+          const nonEscrowReclaimTxs = this.removeEscrowReclaimTransactions(
+            wallet,
+            txsFromLocal
+          );
+          const confirmedTxs = this.removeAndMarkSoftConfirmedTx(
+            nonEscrowReclaimTxs
+          );
           const endingTxid = confirmedTxs[0] ? confirmedTxs[0].txid : null;
           const endingTs = confirmedTxs[0] ? confirmedTxs[0].time : null;
 
           // First update
           WalletProvider.progressFn[walletId](txsFromLocal, 0);
-          wallet.completeHistory = txsFromLocal;
+          wallet.completeHistory = nonEscrowReclaimTxs;
 
           // send update
           this.events.publish('Local/WalletHistoryUpdate', {
             walletId: wallet.id,
-            complete: false
+            finished: false
           });
 
           const getNewTxs = (
@@ -933,7 +983,10 @@ export class WalletProvider {
                   });
                   // Final update
                   if (walletId == wallet.credentials.walletId) {
-                    wallet.completeHistory = newHistory;
+                    wallet.completeHistory = this.removeEscrowReclaimTransactions(
+                      wallet,
+                      newHistory
+                    );
                   }
 
                   return this.persistenceProvider
@@ -1020,6 +1073,19 @@ export class WalletProvider {
     });
   }
 
+  public removeEscrowReclaimTransactions(wallet, txs): any[] {
+    if (!this.isZceCompatible(wallet)) return txs;
+    return txs.filter(tx => {
+      if (tx.action !== 'moved') {
+        return true;
+      }
+      const sendTxAtSameTimeAsMove = txs.find(
+        tx2 => tx2.action === 'sent' && Math.abs(tx.time - tx2.time) < 100
+      );
+      return !sendTxAtSameTimeAsMove;
+    });
+  }
+
   // Approx utxo amount, from which the uxto is economically redeemable
   public getLowAmount(wallet): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -1038,9 +1104,9 @@ export class WalletProvider {
   public getMinFee(wallet, nbOutputs?: number): Promise<any> {
     return new Promise((resolve, reject) => {
       this.feeProvider
-        .getFeeLevels(wallet.coin)
+        .getFeeLevels(wallet.coin, wallet.network)
         .then(data => {
-          const normalLevelRate = _.find(data.levels[wallet.network], level => {
+          const normalLevelRate = _.find(data.levels, level => {
             return level.level === 'normal';
           });
           const lowLevelRate: string = (
@@ -1116,12 +1182,43 @@ export class WalletProvider {
     });
   }
 
+  public getMultisigContractInstantiationInfo(wallet, opts): Promise<any> {
+    return new Promise((resolve, reject) => {
+      opts = opts || {};
+      wallet.getMultisigContractInstantiationInfo(opts, (err, res) => {
+        if (err) return reject(err);
+        return resolve(res);
+      });
+    });
+  }
+
+  public getMultisigContractInfo(wallet, opts): Promise<any> {
+    return new Promise((resolve, reject) => {
+      opts = opts || {};
+      wallet.getMultisigContractInfo(opts, (err, res) => {
+        if (err) return reject(err);
+        return resolve(res);
+      });
+    });
+  }
+
+  public getTokenContractInfo(wallet, opts): Promise<any> {
+    return new Promise((resolve, reject) => {
+      opts = opts || {};
+      wallet.getTokenContractInfo(opts, (err, res) => {
+        if (err) return reject(err);
+        return resolve(res);
+      });
+    });
+  }
+
   private isHistoryCached(wallet): boolean {
     return wallet.completeHistory && wallet.completeHistoryIsValid;
   }
 
-  public getTx(wallet, txid: string): Promise<any> {
+  public getTx(wallet, txid: string, opts: HistoryOptionsI = {}): Promise<any> {
     return new Promise((resolve, reject) => {
+      opts = opts || {};
       const finish = list => {
         const tx = _.find(list, {
           txid
@@ -1131,13 +1228,11 @@ export class WalletProvider {
         return tx;
       };
 
-      if (this.isHistoryCached(wallet)) {
+      if (this.isHistoryCached(wallet) && !opts.force) {
         const tx = finish(wallet.completeHistory);
         return resolve(tx);
       } else {
-        const opts = {
-          limitTx: txid
-        };
+        opts.limitTx = txid;
         this.fetchTxHistory(wallet, null, opts)
           .then(txHistory => {
             const tx = finish(txHistory);
@@ -1196,13 +1291,10 @@ export class WalletProvider {
     return new Promise((resolve, reject) => {
       if (_.isEmpty(txp) || _.isEmpty(wallet))
         return reject('MISSING_PARAMETER');
-
       wallet.createTxProposal(txp, (err, createdTxp) => {
         if (err) return reject(err);
-        else {
-          this.logger.debug('Transaction created');
-          return resolve(createdTxp);
-        }
+        this.logger.debug('Transaction created');
+        return resolve(createdTxp);
       });
     });
   }
@@ -1226,19 +1318,48 @@ export class WalletProvider {
     });
   }
 
-  public signTx(wallet, txp, password: string): Promise<any> {
+  public signTx(
+    wallet,
+    txp,
+    password: string,
+    localOnly = false
+  ): Promise<any> {
     return new Promise((resolve, reject) => {
       if (!wallet || !txp) return reject('MISSING_PARAMETER');
 
       const rootPath = wallet.getRootPath();
 
-      const signatures = this.keyProvider.sign(
-        wallet.credentials.keyId,
-        rootPath,
-        txp,
-        password
-      );
+      let signatures;
 
+      try {
+        signatures = this.keyProvider.sign(
+          wallet.credentials.keyId,
+          rootPath,
+          txp,
+          password
+        );
+      } catch (err) {
+        const title =
+          'Your wallet is in a corrupt state. Please contact support and share the logs provided';
+        let message;
+        try {
+          message = err instanceof Error ? err.toString() : JSON.stringify(err);
+        } catch (error) {
+          message = 'Unknown error';
+        }
+        this.popupProvider.ionicAlert(title, message).then(() => {
+          // Share logs
+          const platform = this.platformProvider.isCordova
+            ? this.platformProvider.isAndroid
+              ? 'android'
+              : 'ios'
+            : 'desktop';
+          this.logsProvider.get(this.appProvider.info.nameCase, platform);
+        });
+      }
+      if (localOnly) {
+        return resolve({ ...txp, signatures });
+      }
       try {
         wallet.pushSignatures(txp, signatures, (err, signedTxp) => {
           if (err) {
@@ -1254,30 +1375,53 @@ export class WalletProvider {
     });
   }
 
-  public broadcastTx(wallet, txp): Promise<any> {
-    return new Promise((resolve, reject) => {
-      if (_.isEmpty(txp) || _.isEmpty(wallet))
-        return reject('MISSING_PARAMETER');
+  public broadcastTx(wallet, txp, timeout = 20000): Promise<any> {
+    return Promise.race([
+      new Promise((resolve, reject) => {
+        if (_.isEmpty(txp) || _.isEmpty(wallet))
+          return reject('MISSING_PARAMETER');
 
-      if (txp.status != 'accepted') return reject('TX_NOT_ACCEPTED');
+        if (txp.status != 'accepted') return reject('TX_NOT_ACCEPTED');
 
-      wallet.broadcastTxProposal(txp, (err, broadcastedTxp, memo) => {
-        if (err) {
-          if (_.isArrayBuffer(err)) {
-            const enc = new encoding.TextDecoder();
-            err = enc.decode(err);
-            this.removeTx(wallet, txp);
-            return reject(err);
+        if (txp.raw) {
+          if (
+            txp.coin.toLowerCase() === 'eth' &&
+            this.currencyProvider.isERCToken(txp.coin)
+          ) {
+            txp.raw.forEach((raw, i) => {
+              this.logger.info(`Broadcasting raw tx (${i}): ${raw}`);
+            });
           } else {
-            return reject(err);
+            this.logger.info(`Broadcasting raw tx: ${txp.raw}`);
           }
         }
 
-        this.logger.info('Transaction broadcasted: ', broadcastedTxp.txid);
-        if (memo) this.logger.info('Memo: ', memo);
-        return resolve(broadcastedTxp);
-      });
-    });
+        wallet.broadcastTxProposal(txp, (err, broadcastedTxp, memo) => {
+          if (err) {
+            if (_.isArrayBuffer(err)) {
+              const enc = new encoding.TextDecoder();
+              err = enc.decode(err);
+              this.removeTx(wallet, txp);
+              return reject(err);
+            } else {
+              return reject(err);
+            }
+          }
+          this.logger.info('Transaction broadcasted: ', broadcastedTxp.txid);
+          if (memo) this.logger.info('Memo: ', memo);
+          return resolve(broadcastedTxp);
+        });
+      }),
+      new Promise((_r, rej) => {
+        setTimeout(
+          () =>
+            rej(
+              'Broadcasting timeout. Please check your wallet transaction history before do it again.'
+            ),
+          timeout
+        );
+      })
+    ]);
   }
 
   public rejectTx(wallet, txp): Promise<any> {
@@ -1299,13 +1443,14 @@ export class WalletProvider {
         return reject('MISSING_PARAMETER');
 
       wallet.removeTxProposal(txp, err => {
+        if (err) return reject(this.bwcErrorProvider.msg(err));
         this.logger.debug('Transaction removed');
 
         this.invalidateCache(wallet);
-        this.events.publish('Local/TxAction', {
+        this.events.publish('Local/WalletFocus', {
           walletId: wallet.id
         });
-        return resolve(err);
+        return resolve();
       });
     });
   }
@@ -1352,23 +1497,16 @@ export class WalletProvider {
 
     let updates = [];
     clients.forEach(c => {
-      if (this.currencyProvider.isERCToken(c.credentials.coin)) return;
+      if (
+        this.currencyProvider.isERCToken(c.credentials.coin) ||
+        c.credentials.multisigEthInfo
+      )
+        return;
 
       updates.push(this.updateRemotePreferencesFor(c, prefs));
     });
 
     return Promise.all(updates);
-  }
-
-  public recreate(wallet): Promise<any> {
-    return new Promise((resolve, reject) => {
-      this.logger.info('Recreating wallet:', wallet.id);
-      wallet.recreateWallet(err => {
-        wallet.notAuthorized = false;
-        if (err) return reject(err);
-        return resolve();
-      });
-    });
   }
 
   public startScan(wallet): Promise<any> {
@@ -1393,6 +1531,15 @@ export class WalletProvider {
   public clearTxHistory(wallet): void {
     this.invalidateCache(wallet);
     this.persistenceProvider.removeTxHistory(wallet.id);
+    this.clearWalletCache(wallet)
+      .then(() => {
+        this.logger.info(
+          `TxHistory cache cleared from server for: ${wallet.id}`
+        );
+      })
+      .catch(err => {
+        this.logger.error(err);
+      });
   }
 
   public expireAddress(walletId: string): Promise<any> {
@@ -1510,7 +1657,7 @@ export class WalletProvider {
       this.rejectTx(wallet, txp)
         .then(txpr => {
           this.invalidateCache(wallet);
-          this.events.publish('Local/TxAction', {
+          this.events.publish('Local/WalletFocus', {
             walletId: wallet.id
           });
           return resolve(txpr);
@@ -1526,7 +1673,7 @@ export class WalletProvider {
       this.publishTx(wallet, txp)
         .then(() => {
           this.invalidateCache(wallet);
-          this.events.publish('Local/TxAction', {
+          this.events.publish('Local/WalletFocus', {
             walletId: wallet.id
           });
           return resolve();
@@ -1557,6 +1704,36 @@ export class WalletProvider {
     });
   }
 
+  public isZceCompatible(wallet) {
+    const isSingleSigBch =
+      wallet.coin === 'bch' && wallet.credentials.addressType === 'P2PKH';
+    const isNotDuplicatedFromAnotherChain =
+      wallet.credentials.rootPath.split('/')[2] === "145'";
+    return (
+      isSingleSigBch &&
+      (isNotDuplicatedFromAnotherChain || wallet.network === 'testnet')
+    );
+  }
+
+  private async generateEscrowReclaimTx(wallet, signedTxp, password) {
+    const reclaimTxp = this.zceProvider.generateEscrowReclaimTxp(
+      wallet,
+      signedTxp
+    );
+    const signedReclaimTxp = await this.signTx(
+      wallet,
+      reclaimTxp,
+      password,
+      true
+    );
+    const reclaimSignatureString = signedReclaimTxp.signatures[0];
+    return this.zceProvider.generateEscrowReclaimRawTx(
+      signedTxp,
+      reclaimTxp,
+      reclaimSignatureString
+    );
+  }
+
   private signAndBroadcast(wallet, publishedTxp, password): Promise<any> {
     return new Promise((resolve, reject) => {
       this.onGoingProcessProvider.set('signingTx');
@@ -1566,15 +1743,24 @@ export class WalletProvider {
         publishedTxp.amount -
         publishedTxp.fee;
       this.signTx(wallet, publishedTxp, password)
-        .then(signedTxp => {
+        .then(async signedTxp => {
           this.invalidateCache(wallet);
+          if (signedTxp.escrowAddress) {
+            const escrowReclaimTx = await this.generateEscrowReclaimTx(
+              wallet,
+              signedTxp,
+              password
+            );
+            signedTxp.escrowReclaimTx = escrowReclaimTx;
+          }
           if (signedTxp.status == 'accepted') {
             this.onGoingProcessProvider.set('broadcastingTx');
             this.broadcastTx(wallet, signedTxp)
               .then(broadcastedTxp => {
-                this.events.publish('Local/TxAction', {
+                this.events.publish('Local/WalletFocus', {
                   walletId: wallet.id,
-                  until: { totalAmount: expected }
+                  until: { totalAmount: expected },
+                  alsoUpdateHistory: true
                 });
                 return resolve(broadcastedTxp);
               })
@@ -1582,8 +1768,9 @@ export class WalletProvider {
                 return reject(this.bwcErrorProvider.msg(err));
               });
           } else {
-            this.events.publish('Local/TxAction', {
-              walletId: wallet.id
+            this.events.publish('Local/WalletFocus', {
+              walletId: wallet.id,
+              alsoUpdateHistory: true
             });
             return resolve(signedTxp);
           }
@@ -1596,55 +1783,25 @@ export class WalletProvider {
                   'The payment was created but could not be completed. Please try again from home screen'
                 );
           this.logger.error('Sign error: ' + msg);
-          this.events.publish('Local/TxAction', {
+          this.events.publish('Local/WalletFocus', {
             walletId: wallet.id,
-            until: { totalAmount: expected }
+            until: { totalAmount: expected },
+            alsoUpdateHistory: true
           });
           return reject(msg);
         });
     });
   }
 
-  public publishAndSign(wallet, txp): Promise<any> {
-    return new Promise((resolve, reject) => {
-      // Already published?
-      if (txp.status == 'pending') {
-        this.prepare(wallet)
-          .then((password: string) => {
-            this.signAndBroadcast(wallet, txp, password)
-              .then(broadcastedTxp => {
-                return resolve(broadcastedTxp);
-              })
-              .catch(err => {
-                return reject(err);
-              });
-          })
-          .catch(err => {
-            return reject(err);
-          });
-      } else {
-        this.prepare(wallet)
-          .then((password: string) => {
-            this.onGoingProcessProvider.set('sendingTx');
-            this.publishTx(wallet, txp)
-              .then(publishedTxp => {
-                this.signAndBroadcast(wallet, publishedTxp, password)
-                  .then(broadcastedTxp => {
-                    return resolve(broadcastedTxp);
-                  })
-                  .catch(err => {
-                    return reject(err);
-                  });
-              })
-              .catch(err => {
-                return reject(err);
-              });
-          })
-          .catch(err => {
-            return reject(err);
-          });
-      }
-    });
+  public async publishAndSign(wallet, txp): Promise<any> {
+    const password = await this.prepare(wallet);
+    // Already published?
+    if (txp.status == 'pending') {
+      return this.signAndBroadcast(wallet, txp, password);
+    }
+    this.onGoingProcessProvider.set('sendingTx');
+    const publishedTxp = await this.publishTx(wallet, txp);
+    return this.signAndBroadcast(wallet, publishedTxp, password);
   }
 
   public signMultipleTxps(wallet, txps: any[]): Promise<any> {
@@ -1805,7 +1962,7 @@ export class WalletProvider {
     });
   }
 
-  public getProtocolHandler(coin: Coin, network: string = 'livenet'): string {
+  public getProtocolHandler(coin: string, network: string = 'livenet'): string {
     return this.currencyProvider.getProtocolPrefix(coin, network);
   }
 
@@ -1837,6 +1994,22 @@ export class WalletProvider {
           }
         );
       });
+    });
+  }
+
+  public getNonce(wallet, address: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      wallet.getNonce(
+        {
+          coin: wallet.coin,
+          network: wallet.network,
+          address
+        },
+        (err, nonce) => {
+          if (err) return reject(err);
+          return resolve(nonce);
+        }
+      );
     });
   }
 }

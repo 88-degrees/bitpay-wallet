@@ -1,4 +1,3 @@
-import { DecimalPipe } from '@angular/common';
 import { Component } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import {
@@ -18,6 +17,7 @@ import { BwcProvider } from '../../../providers/bwc/bwc';
 import { ErrorsProvider } from '../../../providers/errors/errors';
 import { IncomingDataProvider } from '../../../providers/incoming-data/incoming-data';
 import { Logger } from '../../../providers/logger/logger';
+import { PlatformProvider } from '../../../providers/platform/platform';
 import { TxFormatProvider } from '../../../providers/tx-format/tx-format';
 
 // Pages
@@ -38,6 +38,7 @@ export class MultiSendPage {
   public contactsList = [];
   public filteredContactsList = [];
   public filteredWallets = [];
+  public isCordova: boolean;
   public hasContacts: boolean;
   public contactsShowMore: boolean;
   public amount: string;
@@ -50,9 +51,13 @@ export class MultiSendPage {
     'BitcoinAddress',
     'BitcoinCashAddress',
     'EthereumAddress',
+    'DogecoinAddress',
+    'LitecoinAddress',
     'EthereumUri',
     'BitcoinUri',
-    'BitcoinCashUri'
+    'BitcoinCashUri',
+    'DogecoinUri',
+    'LitecoinUri'
   ];
 
   constructor(
@@ -67,15 +72,18 @@ export class MultiSendPage {
     private appProvider: AppProvider,
     private translate: TranslateService,
     private modalCtrl: ModalController,
-    private decimalPipe: DecimalPipe,
     private txFormatProvider: TxFormatProvider,
     private bwcProvider: BwcProvider,
-    private errorsProvider: ErrorsProvider
+    private errorsProvider: ErrorsProvider,
+    private platformProvider: PlatformProvider
   ) {
     this.bitcore = {
       btc: this.bwcProvider.getBitcore(),
-      bch: this.bwcProvider.getBitcoreCash()
+      bch: this.bwcProvider.getBitcoreCash(),
+      doge: this.bwcProvider.getBitcoreDoge(),
+      ltc: this.bwcProvider.getBitcoreLtc()
     };
+    this.isCordova = this.platformProvider.isCordova;
     this.isDisabledContinue = true;
     this.wallet = this.navParams.data.wallet;
     this.events.subscribe(
@@ -107,7 +115,8 @@ export class MultiSendPage {
 
   public openTransferToModal(): void {
     this.navCtrl.push(TransferToModalPage, {
-      wallet: this.wallet
+      wallet: this.wallet,
+      fromMultiSend: true
     });
   }
 
@@ -115,7 +124,7 @@ export class MultiSendPage {
     let modal = this.modalCtrl.create(
       AmountPage,
       {
-        wallet: this.wallet,
+        walletId: this.wallet.id,
         useAsModal: true
       },
       {
@@ -138,10 +147,9 @@ export class MultiSendPage {
       item.altAmountStr = altAmountStr;
       item.fiatAmount = data.fiatAmount;
       item.fiatCode = data.fiatCode;
-      item.amountToShow = this.decimalPipe.transform(
-        data.amount /
-          this.currencyProvider.getPrecision(this.wallet.coin).unitToSatoshi,
-        '1.2-6'
+      item.amountToShow = this.txFormatProvider.formatAmount(
+        this.wallet.coin,
+        +data.amount
       );
       this.multiRecipients[index] = item;
       this.checkGoToConfirmButton();
@@ -149,12 +157,8 @@ export class MultiSendPage {
   }
 
   public addRecipient(recipient): void {
-    let amountToShow = +recipient.amount
-      ? this.decimalPipe.transform(
-          +recipient.amount /
-            this.currencyProvider.getPrecision(this.wallet.coin).unitToSatoshi,
-          '1.2-6'
-        )
+    let amountToShow: string = +recipient.amount
+      ? this.txFormatProvider.formatAmount(this.wallet.coin, +recipient.amount)
       : null;
 
     let altAmountStr = this.txFormatProvider.formatAlternativeStr(

@@ -1,9 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
+import { TranslateService } from '@ngx-translate/core';
 import { FCMNG } from 'fcm-ng';
-import { Events } from 'ionic-angular';
+import { Events, Modal, ModalController } from 'ionic-angular';
 import { Observable } from 'rxjs';
 import { Logger } from '../../providers/logger/logger';
+
+// components
+import { NotificationComponent } from '../../components/notification-component/notification-component';
 
 // providers
 import { AppProvider } from '../app/app';
@@ -21,6 +25,10 @@ export class PushNotificationsProvider {
   private isAndroid: boolean;
   private usePushNotifications: boolean;
   private _token = null;
+  private fcmInterval;
+  private notifications = [];
+  private currentNotif: Modal;
+  private openWalletId;
 
   constructor(
     public http: HttpClient,
@@ -31,7 +39,9 @@ export class PushNotificationsProvider {
     public appProvider: AppProvider,
     private bwcProvider: BwcProvider,
     private FCMPlugin: FCMNG,
-    private events: Events
+    private events: Events,
+    private modalCtrl: ModalController,
+    private translate: TranslateService
   ) {
     this.logger.debug('PushNotificationsProvider initialized');
     this.isIOS = this.platformProvider.isIOS;
@@ -58,14 +68,37 @@ export class PushNotificationsProvider {
         this.logger.debug('Get token for push notifications: ' + token);
         this._token = token;
         this.enable();
-        // enabling topics
         this.handlePushNotifications();
-        if (config.offersAndPromotions.enabled)
+        // enabling topics
+        if (
+          this.appProvider.info.name != 'copay' &&
+          config.offersAndPromotions.enabled
+        )
           this.subscribeToTopic('offersandpromotions');
-        if (config.productsUpdates.enabled)
+        if (
+          this.appProvider.info.name != 'copay' &&
+          config.productsUpdates.enabled
+        )
           this.subscribeToTopic('productsupdates');
+
+        this.fcmInterval = setInterval(() => {
+          this.renewSubscription();
+        }, 3 * 60 * 1000); // 3 min
       });
     });
+  }
+
+  private renewSubscription(): void {
+    const opts = {
+      showHidden: false
+    };
+    const wallets = this.profileProvider.getWallets(opts);
+    _.forEach(wallets, walletClient => {
+      this._unsubscribe(walletClient);
+    });
+    setTimeout(() => {
+      this.updateSubscription(wallets);
+    }, 1000);
   }
 
   public handlePushNotifications(): void {
@@ -87,14 +120,31 @@ export class PushNotificationsProvider {
             if (!this.verifySignature(data)) return;
             this.events.publish('ShowAdvertising', data);
           } else {
-            const walletIdHashed = data.walletId;
-            const tokenAddress = data.tokenAddress;
-            if (!walletIdHashed) return;
-            this._openWallet(walletIdHashed, tokenAddress);
+            this._openWallet(data);
           }
+        } else {
+          const wallet = this.findWallet(data.walletId, data.tokenAddress);
+          if (!wallet && data.notification_type !== 'NewBlock') return;
+          const walletId = wallet ? wallet.credentials.walletId : null;
+          this.newBwsEvent(data, walletId);
+          this.showInappNotification(data);
         }
       });
     }
+  }
+
+  private newBwsEvent(notification, walletId): void {
+    let id = walletId;
+    if (notification.tokenAddress) {
+      id = walletId + '-' + notification.tokenAddress.toLowerCase();
+      this.logger.debug(`event for token wallet: ${id}`);
+    }
+    let eventData = {
+      walletId: id,
+      notification_type: notification.notification_type,
+      notification
+    };
+    this.events.publish('bwsEvent', eventData);
   }
 
   public updateSubscription(walletClient): void {
@@ -119,7 +169,7 @@ export class PushNotificationsProvider {
     }
 
     const opts = {
-      showHidden: true
+      showHidden: false
     };
     const wallets = this.profileProvider.getWallets(opts);
     _.forEach(wallets, walletClient => {
@@ -147,6 +197,8 @@ export class PushNotificationsProvider {
       this._unsubscribe(walletClient);
     });
     this._token = null;
+
+    clearInterval(this.fcmInterval);
   }
 
   public unsubscribe(walletClient): void {
@@ -166,7 +218,8 @@ export class PushNotificationsProvider {
     const opts = {
       token: this._token,
       platform: this.isIOS ? 'ios' : this.isAndroid ? 'android' : null,
-      packageName: this.appProvider.info.packageNameId
+      packageName: this.appProvider.info.packageNameId,
+      walletId: walletClient.credentials.walletId
     };
     walletClient.pushNotificationsSubscribe(opts, err => {
       if (err)
@@ -195,23 +248,34 @@ export class PushNotificationsProvider {
     });
   }
 
-  private async _openWallet(walletIdHashed, tokenAddress) {
-    const wallet = this.findWallet(walletIdHashed, tokenAddress);
+  private async _openWallet(data) {
+    const walletIdHashed = data.walletId;
+    const tokenAddress = data.tokenAddress;
+    const multisigContractAddress = data.multisigContractAddress;
+    if (!walletIdHashed) return;
 
-    if (!wallet) return;
+    const wallet = this.findWallet(
+      walletIdHashed,
+      tokenAddress,
+      multisigContractAddress
+    );
+
+    if (!wallet || this.openWalletId === wallet.credentials.walletId) return;
+
+    this.openWalletId = wallet.credentials.walletId; // avoid opening the same wallet many times
 
     await Observable.timer(1000).toPromise(); // wait for subscription to OpenWallet event
 
     this.events.publish('OpenWallet', wallet);
   }
 
-  private findWallet(walletIdHashed, tokenAddress) {
+  private findWallet(walletIdHashed, tokenAddress, multisigContractAddress?) {
     let walletIdHash;
     const sjcl = this.bwcProvider.getSJCL();
 
     const wallets = this.profileProvider.getWallets();
     const wallet = _.find(wallets, w => {
-      if (tokenAddress) {
+      if (tokenAddress || multisigContractAddress) {
         const walletId = w.credentials.walletId;
         const lastHyphenPosition = walletId.lastIndexOf('-');
         const walletIdWithoutTokenAddress = walletId.substring(
@@ -256,5 +320,82 @@ export class PushNotificationsProvider {
       'little'
     );
     return verificationResult;
+  }
+
+  public showInappNotification(data) {
+    if (!data.body || data.notification_type === 'NewOutgoingTx') return;
+
+    this.notifications.unshift(data);
+    this.runNotificationsQueue();
+  }
+
+  private runNotificationsQueue() {
+    if (this.currentNotif) return;
+
+    this.notifications.some(data => {
+      if (!data.showDone) {
+        this.currentNotif = this.modalCtrl.create(
+          NotificationComponent,
+          {
+            title: data.title,
+            message: data.body,
+            customButton: {
+              closeButtonText: data.closeButtonText
+                ? data.closeButtonText
+                : this.translate.instant('Open Wallet'),
+              data: {
+                action: data.action ? data.action : 'openWallet'
+              }
+            }
+          },
+          {
+            showBackdrop: true,
+            enableBackdropDismiss: true,
+            enterAnimation: 'modal-translate-up-enter',
+            leaveAnimation: 'modal-translate-up-leave',
+            cssClass: 'in-app-notification-modal'
+          }
+        );
+
+        this.currentNotif.onDidDismiss(dismissData => {
+          if (
+            dismissData &&
+            dismissData.action &&
+            dismissData.action === 'openWallet'
+          )
+            this._openWallet(data);
+          else if (
+            dismissData &&
+            dismissData.action &&
+            dismissData.action === 'goToWalletconnect'
+          ) {
+            const nextView = {
+              name: 'WalletConnectRequestDetailsPage',
+              params: {
+                force: true,
+                request: data.request,
+                params: data.request.params
+              }
+            };
+            this.events.publish('IncomingDataRedir', nextView);
+          }
+
+          this.currentNotif = null;
+          this.runNotificationsQueue();
+        });
+
+        this.currentNotif.present().then(() => {
+          if (data.autoDismiss) {
+            setTimeout(() => {
+              this.currentNotif && this.currentNotif.dismiss();
+            }, 2000);
+          }
+        });
+        data.showDone = true;
+        return true;
+      }
+
+      return false;
+    });
   }
 }

@@ -124,6 +124,7 @@ export class WalletMock {
     network?: string;
     publicKeyRing?: any[];
     coin: string;
+    rootPath: string;
   };
   coin: string;
   id: string;
@@ -146,7 +147,8 @@ export class WalletMock {
       walletId: 'walletid1',
       walletName: 'Test wallet',
       keyId: 'keyId1',
-      coin: 'btc'
+      coin: 'btc',
+      rootPath: "m/44'/0'/0'"
     };
     this.coin = 'btc';
     this.id = 'walletid1';
@@ -213,6 +215,7 @@ export class WalletMock {
   createTxProposal(_txp, cb) {
     const txp: TransactionProposal = {
       coin: 'btc',
+      chain: 'btc',
       amount: 1000,
       from: 'address1',
       toAddress: 'address1',
@@ -262,9 +265,6 @@ export class WalletMock {
     return cb(null);
   }
   savePreferences(_pref, cb) {
-    return cb(null);
-  }
-  recreateWallet(cb) {
     return cb(null);
   }
   startScan(_opts, cb) {

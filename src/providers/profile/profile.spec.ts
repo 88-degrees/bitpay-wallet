@@ -12,7 +12,6 @@ import { Profile } from '../../models/profile/profile.model';
 import { ActionSheetProvider } from '../action-sheet/action-sheet';
 import { ConfigProvider } from '../config/config';
 import { PlatformProvider } from '../platform/platform';
-import { PopupProvider } from '../popup/popup';
 import { ProfileProvider } from '../profile/profile';
 import { RateProvider } from '../rate/rate';
 import { ReplaceParametersProvider } from '../replace-parameters/replace-parameters';
@@ -27,11 +26,11 @@ describe('Profile Provider', () => {
   let actionSheetProvider: ActionSheetProvider;
   let configProvider: ConfigProvider;
   let keyProvider: KeyProvider;
-  let popupProvider: PopupProvider;
   let replaceParametersProvider: ReplaceParametersProvider;
   let platformProvider: PlatformProvider;
   let txFormatProvider: TxFormatProvider;
   let persistenceProvider: PersistenceProvider;
+  let rateProvider: RateProvider;
 
   const walletMock = {
     id1: {
@@ -130,11 +129,13 @@ describe('Profile Provider', () => {
   };
 
   const walletToImport = {
-    walletId: 'id1',
-    xPrivKey: 'xPrivKey1',
-    xPrivKeyEncrypted: 'xPrivKeyEncrypted1',
-    mnemonicEncrypted: 'mnemonicEncrypted1',
-    n: 1
+    toObj: () => ({
+      walletId: 'id1',
+      xPrivKey: 'xPrivKey1',
+      xPrivKeyEncrypted: 'xPrivKeyEncrypted1',
+      mnemonicEncrypted: 'mnemonicEncrypted1',
+      n: 1
+    })
   };
 
   const walletClientMock = {
@@ -255,7 +256,7 @@ describe('Profile Provider', () => {
 
   let genericKey = {
     id: 'keyId',
-    xPrivKey: 'xPrivKey',
+    //    xPrivKey: 'xPrivKey',  // xxPrivKey is no longer available directly as for BWC 9.4
     encrypt: () => {
       return true;
     },
@@ -301,25 +302,31 @@ describe('Profile Provider', () => {
       return _.clone(walletClientMock);
     }
     getKey(_walletData, _opts) {
-      return {
-        create: _opts => {
-          return genericKey;
-        },
-        fromExtendedPrivateKey: (_extendedPrivateKey: string, _opts) => {
-          return genericKey;
-        },
-        fromMnemonic: (_mnemonic: string, _opts) => {
-          return genericKey;
-        },
-        fromObj: _key => {
-          let key = genericKey;
-          return key;
-        },
-        match: (_key1, _key2) => {
+      class Key2 {
+        id: string;
+
+        constructor() {
+          this.id = 'keyId';
+        }
+        match(_key1, _key2) {
           return false;
         }
-      };
+        encrypt() {
+          return true;
+        }
+        createCredentials(_, _opts) {
+          return true;
+        }
+        isPrivKeyEncrypted() {
+          return false;
+        }
+        toObj() {
+          return keysArrayFromStorage[0];
+        }
+      }
+      return Key2;
     }
+
     upgradeCredentialsV1(_data) {
       const migrated = {
         credentials: {
@@ -395,10 +402,10 @@ describe('Profile Provider', () => {
     actionSheetProvider = testBed.get(ActionSheetProvider);
     configProvider = testBed.get(ConfigProvider);
     keyProvider = testBed.get(KeyProvider);
-    popupProvider = testBed.get(PopupProvider);
     replaceParametersProvider = testBed.get(ReplaceParametersProvider);
     platformProvider = testBed.get(PlatformProvider);
     txFormatProvider = testBed.get(TxFormatProvider);
+    rateProvider = testBed.get(RateProvider);
     persistenceProvider = testBed.get(PersistenceProvider);
     persistenceProvider.load();
 
@@ -475,6 +482,11 @@ describe('Profile Provider', () => {
         'setNotificationsInterval'
       );
       profileProvider.UPDATE_PERIOD_FAST = 5;
+      const opts = {
+        pushNotifications: { enabled: false }
+      };
+
+      spyOn(configProvider, 'get').and.returnValue(opts);
       profileProvider.setFastRefresh(profileProvider.wallet.id1);
       expect(setNotificationsIntervalSpy).toHaveBeenCalledWith(5);
     });
@@ -486,9 +498,13 @@ describe('Profile Provider', () => {
         profileProvider.wallet.id1,
         'setNotificationsInterval'
       );
-      profileProvider.UPDATE_PERIOD = 15;
+      profileProvider.EXTENDED_UPDATE_PERIOD = 3600;
+      const opts = {
+        pushNotifications: { enabled: false }
+      };
+      spyOn(configProvider, 'get').and.returnValue(opts);
       profileProvider.setSlowRefresh(profileProvider.wallet.id1);
-      expect(setNotificationsIntervalSpy).toHaveBeenCalledWith(15);
+      expect(setNotificationsIntervalSpy).toHaveBeenCalledWith(3600);
     });
   });
 
@@ -676,17 +692,21 @@ describe('Profile Provider', () => {
       ];
 
       profileProvider.profile.dirty = true;
+      const opts = {
+        pushNotifications: { enabled: true },
+        bwsFor: 'id1'
+      };
 
-      spyOn(configProvider, 'get').and.returnValue({ bwsFor: 'id1' });
+      spyOn(configProvider, 'get').and.returnValue(opts);
       profileProvider.profile.disclaimerAccepted = true;
     });
-    it('should get, bind and return profile with migrated credentials and keys', () => {
+    it('should get and bind profile with migrated credentials and keys', () => {
       getProfileSpy.and.returnValue(Promise.resolve(profileProvider.profile));
 
       profileProvider
         .loadAndBindProfile()
-        .then(profile => {
-          expect(profile).toBeDefined();
+        .then(onbordingState => {
+          expect(onbordingState).toBeUndefined();
           expect(storeProfileSpy).toHaveBeenCalledWith(profileProvider.profile);
         })
         .catch(err => {
@@ -694,7 +714,7 @@ describe('Profile Provider', () => {
         });
     });
 
-    it('should get, bind and return profile with migrated credentials', () => {
+    it('should get and bind profile with migrated credentials', () => {
       BwcProviderMock.prototype.upgradeMultipleCredentialsV1 = (
         _oldCredentials: any
       ) => {
@@ -716,8 +736,8 @@ describe('Profile Provider', () => {
 
       profileProvider
         .loadAndBindProfile()
-        .then(profile => {
-          expect(profile).toBeDefined();
+        .then(onbordingState => {
+          expect(onbordingState).toBeUndefined();
           expect(storeProfileSpy).toHaveBeenCalledWith(profileProvider.profile);
         })
         .catch(err => {
@@ -740,8 +760,8 @@ describe('Profile Provider', () => {
 
       profileProvider
         .loadAndBindProfile()
-        .then(profile => {
-          expect(profile).toBeDefined();
+        .then(onbordingState => {
+          expect(onbordingState).toBeUndefined();
           expect(storeProfileSpy).toHaveBeenCalledWith(profileProvider.profile);
         })
         .catch(err => {
@@ -801,6 +821,13 @@ describe('Profile Provider', () => {
       handleEncryptedWalletSpy.and.returnValue(Promise.resolve());
       spyOn(keyProvider, 'addKey').and.returnValue(Promise.resolve());
       configProvider.set({ bwsFor: 'id1' });
+      spyOn(
+        actionSheetProvider,
+        'createEncryptPasswordComponent'
+      ).and.returnValue({
+        present: () => {},
+        dismiss: () => {}
+      });
     });
     it('should create wallet using seed from mnemonic', () => {
       const opts = {
@@ -886,10 +913,6 @@ describe('Profile Provider', () => {
         coin: 'btc'
       };
 
-      spyOn(popupProvider, 'ionicConfirm').and.returnValue(
-        Promise.resolve(true)
-      );
-
       profileProvider
         .createWallet(opts)
         .then(walletClient => {
@@ -904,13 +927,15 @@ describe('Profile Provider', () => {
 
   describe('joinWallet', () => {
     beforeEach(() => {
-      spyOn(popupProvider, 'ionicConfirm').and.returnValue(
+      spyOn<any>(profileProvider, 'askToEncryptKey').and.returnValue(
         Promise.resolve(true)
       );
-      spyOn(popupProvider, 'ionicPrompt').and.returnValue(
-        Promise.resolve(true)
-      );
-      spyOn(configProvider, 'get').and.returnValue({ bwsFor: 'id1' });
+      const opts = {
+        pushNotifications: { enabled: true },
+        bwsFor: 'id1'
+      };
+
+      spyOn(configProvider, 'get').and.returnValue(opts);
       spyOn(profileProvider.profile, 'hasWallet').and.returnValue(false);
     });
 
@@ -1203,17 +1228,11 @@ describe('Profile Provider', () => {
         };
       };
 
-      spyOn(popupProvider, 'ionicConfirm').and.returnValue(
-        Promise.resolve(true)
-      );
-      spyOn(popupProvider, 'ionicPrompt').and.returnValue(
-        Promise.resolve(true)
-      );
-
       spyOn(configProvider, 'get').and.returnValue({
         bwsFor: 'id1',
         desktopNotifications: { enabled: true },
-        emailNotifications: { email: 'test@test.com' }
+        emailNotifications: { email: 'test@test.com' },
+        pushNotifications: { enabled: false }
       });
 
       spyOn(actionSheetProvider, 'createInfoSheet').and.returnValue({
@@ -1224,6 +1243,10 @@ describe('Profile Provider', () => {
           return true;
         }
       });
+
+      spyOn<any>(profileProvider, 'askToEncryptKey').and.returnValue(
+        Promise.resolve(true)
+      );
 
       spyOn(Observable, 'timer').and.returnValue({
         toPromise: () => {
@@ -1383,21 +1406,27 @@ describe('Profile Provider', () => {
     });
 
     it('should return true with multiple wallets', () => {
-      // The all wallets have more than 10 BOB worth of btc.
-      const res = profileProvider.hasWalletWithFunds(10, 'BOB');
-      expect(res).toEqual(true);
+      rateProvider.updateRates().then(() => {
+        // The all wallets have more than 10 BOB worth of btc.
+        const res = profileProvider.hasWalletWithFunds(10, 'BOB');
+        expect(res).toEqual(true);
+      });
     });
 
     it('should return true just barely', () => {
-      // The wallet w/ 10 btc should equate to 123 * 10 bob, which would result in this returning true
-      const res = profileProvider.hasWalletWithFunds(1230, 'BOB');
-      expect(res).toEqual(true);
+      rateProvider.updateRates().then(() => {
+        // The wallet w/ 10 btc should equate to 123 * 10 bob, which would result in this returning true
+        const res = profileProvider.hasWalletWithFunds(1230, 'BOB');
+        expect(res).toEqual(true);
+      });
     });
 
     it('should return false', () => {
-      // The wallet w/ 10 btc is the biggest wallet. So no wallets are able to pay 1231 BOB.
-      const res = profileProvider.hasWalletWithFunds(1231, 'BOB');
-      expect(res).toEqual(false);
+      rateProvider.updateRates().then(() => {
+        // The wallet w/ 10 btc is the biggest wallet. So no wallets are able to pay 1231 BOB.
+        const res = profileProvider.hasWalletWithFunds(1231, 'BOB');
+        expect(res).toEqual(false);
+      });
     });
   });
 });

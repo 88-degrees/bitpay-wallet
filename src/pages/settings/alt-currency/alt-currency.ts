@@ -6,6 +6,7 @@ import { Logger } from '../../../providers/logger/logger';
 import { SplashScreen } from '@ionic-native/splash-screen';
 
 // Providers
+import { ActionSheetProvider } from '../../../providers/action-sheet/action-sheet';
 import { ConfigProvider } from '../../../providers/config/config';
 import { PersistenceProvider } from '../../../providers/persistence/persistence';
 import { PlatformProvider } from '../../../providers/platform/platform';
@@ -36,7 +37,8 @@ export class AltCurrencyPage {
     private rate: RateProvider,
     private splashScreen: SplashScreen,
     private platformProvider: PlatformProvider,
-    private persistenceProvider: PersistenceProvider
+    private persistenceProvider: PersistenceProvider,
+    private actionSheetProvider: ActionSheetProvider
   ) {
     this.completeAlternativeList = [];
     this.altCurrencyList = [];
@@ -67,6 +69,12 @@ export class AltCurrencyPage {
       },
       {
         isoCode: 'BUSD'
+      },
+      {
+        isoCode: 'DAI'
+      },
+      {
+        isoCode: 'WBTC'
       }
     ];
   }
@@ -137,11 +145,39 @@ export class AltCurrencyPage {
         }
       }
     };
+    if (
+      _.some(this.completeAlternativeList, ['isoCode', newAltCurrency.isoCode])
+    ) {
+      this.configProvider.set(opts);
+      this.saveLastUsed(newAltCurrency);
+      this.navCtrl.popToRoot().then(() => {
+        this.reload();
+      });
+    } else {
+      // To stop showing currencies that are no longer supported
+      this.showErrorAndRemoveAltCurrency(newAltCurrency);
+    }
+  }
 
-    this.configProvider.set(opts);
-    this.saveLastUsed(newAltCurrency);
-    this.navCtrl.popToRoot().then(() => {
-      this.reload();
+  private showErrorAndRemoveAltCurrency(altCurrency): void {
+    const params = {
+      name: altCurrency.name,
+      isoCode: altCurrency.isoCode,
+      error: true
+    };
+    const infoSheet = this.actionSheetProvider.createInfoSheet(
+      'unsupported-alt-currency',
+      params
+    );
+    infoSheet.present();
+    infoSheet.onDidDismiss(() => {
+      this.lastUsedAltCurrencyList = _.reject(this.lastUsedAltCurrencyList, [
+        'isoCode',
+        altCurrency.isoCode
+      ]);
+      this.persistenceProvider
+        .setLastCurrencyUsed(JSON.stringify(this.lastUsedAltCurrencyList))
+        .then(() => {});
     });
   }
 

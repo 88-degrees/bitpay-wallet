@@ -7,7 +7,6 @@ import { Logger } from '../../../../../providers/logger/logger';
 // Providers
 import { BwcErrorProvider } from '../../../../../providers/bwc-error/bwc-error';
 import { ConfigProvider } from '../../../../../providers/config/config';
-import { Coin } from '../../../../../providers/currency/currency';
 import { DerivationPathHelperProvider } from '../../../../../providers/derivation-path-helper/derivation-path-helper';
 import { ErrorsProvider } from '../../../../../providers/errors/errors';
 import { ExternalLinkProvider } from '../../../../../providers/external-link/external-link';
@@ -113,7 +112,7 @@ export class WalletDuplicatePage {
       n: wallet.n,
       myName: wallet.credentials.copayerName,
       networkName: wallet.network,
-      coin: Coin.BCH,
+      coin: 'bch',
       walletPrivKey: wallet.credentials.walletPrivKey,
       compliantDerivation: wallet.credentials.compliantDerivation,
       bwsurl: this.defaults.bws.url,
@@ -123,8 +122,13 @@ export class WalletDuplicatePage {
 
     this.walletProvider
       .getKeys(wallet)
-      .then(keys => {
-        opts.extendedPrivateKey = keys.xPrivKey;
+      .then(key => {
+        opts.extendedPrivateKey = key.xPrivKey;
+        opts.duplicateKeyId = wallet.credentials.keyId;
+        this.logger.debug(
+          'Duplicating Wallet. using key :',
+          opts.duplicateKeyId
+        );
         this.onGoingProcessProvider.set('duplicatingWallet');
         this.importOrCreate(wallet, opts)
           .then(result => {

@@ -25,12 +25,15 @@ export interface Config {
       alternativeName: string;
       alternativeIsoCode: string;
       defaultLanguage: string;
-      feeLevel: string;
     };
   };
 
   bws: {
     url: string;
+  };
+
+  adPubKey: {
+    pubkey: string;
   };
 
   download: {
@@ -67,8 +70,11 @@ export interface Config {
     amazon: boolean;
     mercadolibre: boolean;
     shapeshift: boolean;
-    simplex: boolean;
+    buycrypto: boolean;
+    exchangecrypto: boolean;
     giftcards: boolean;
+    walletConnect: boolean;
+    newWalletConnect: boolean;
   };
 
   pushNotifications: {
@@ -108,6 +114,8 @@ export interface Config {
 
   blockExplorerUrl: CoinsMap<string>;
 
+  blockExplorerUrlTestnet: CoinsMap<string>;
+
   allowMultiplePrimaryWallets: boolean;
 
   legacyQrCode: {
@@ -122,6 +130,15 @@ export interface Config {
 
   totalBalance: {
     show: boolean;
+  };
+
+  navigation: {
+    type: string;
+  };
+
+  feeLevels: {
+    btc: string;
+    eth: string;
   };
 }
 
@@ -157,16 +174,19 @@ export class ConfigProvider {
           unitCode: 'btc',
           alternativeName: 'US Dollar',
           alternativeIsoCode: 'USD',
-          defaultLanguage: '',
-          feeLevel: 'normal'
+          defaultLanguage: ''
         }
       },
 
       // Bitcore wallet service URL
       bws: {
-        url: 'https://bws.bitpay.com/bws/api'
+        url: 'https://bws.bitpay.com/bws/api' // Uncomment and replace w/ http://localhost:3232/bws/api for testing
       },
 
+      adPubKey: {
+        pubkey:
+          '022fd3864dcba0c5177a0b76a94143ac26dcf4cf32ce7bb3d42a1cecae4102e105'
+      },
       download: {
         bitpay: {
           url: 'https://bitpay.com/wallet'
@@ -205,8 +225,11 @@ export class ConfigProvider {
         amazon: true,
         mercadolibre: true,
         shapeshift: true,
-        simplex: true,
-        giftcards: true
+        buycrypto: true,
+        exchangecrypto: true,
+        giftcards: true,
+        walletConnect: false,
+        newWalletConnect: false
       },
 
       pushNotifications: {
@@ -240,6 +263,8 @@ export class ConfigProvider {
 
       blockExplorerUrl: this.currencyProvider.getBlockExplorerUrls(),
 
+      blockExplorerUrlTestnet: this.currencyProvider.getBlockExplorerUrlsTestnet(),
+
       allowMultiplePrimaryWallets: false,
 
       legacyQrCode: {
@@ -247,34 +272,50 @@ export class ConfigProvider {
       },
 
       theme: {
-        enabled: false,
+        enabled: true,
         system: true,
         name: 'light'
       },
 
       totalBalance: {
         show: true
+      },
+
+      navigation: {
+        type: 'transact'
+      },
+
+      feeLevels: {
+        btc: 'normal',
+        eth: 'normal'
       }
     };
   }
 
   public load() {
-    return new Promise((resolve, reject) => {
+    return new Promise(resolve => {
       this.persistence
         .getConfig()
         .then((config: Config) => {
           if (!_.isEmpty(config)) {
+            this.logger.debug('Using Custom Configuration');
             this.configCache = _.clone(config);
             this.backwardCompatibility();
           } else {
+            this.logger.debug('Using Default Configurartion');
             this.configCache = _.clone(this.configDefault);
           }
           this.logImportantConfig(this.configCache);
           resolve();
         })
         .catch(err => {
-          this.logger.error('Error Loading Config');
-          reject(err);
+          this.logger.error(err.message);
+          this.logger.error(
+            'There was an error reading the app config. It was reseted to default values'
+          );
+          this.configCache = _.clone(this.configDefault);
+          this.reset(); // remove local config
+          resolve();
         });
     });
   }
@@ -307,6 +348,20 @@ export class ConfigProvider {
     });
   }
 
+  public removeBwsFor(walletid) {
+    const config = _.cloneDeep(this.configCache);
+    if (_.isString(walletid) && config.bwsFor && config.bwsFor[walletid]) {
+      try {
+        delete config.bwsFor[walletid];
+        this.logger.debug(`Removed bwsFor ${walletid}`);
+        this.configCache = config;
+        this.persistence.storeConfig(this.configCache).then(() => {
+          this.logger.info('Config saved');
+        });
+      } catch {}
+    }
+  }
+
   public get(): Config {
     return this.configCache;
   }
@@ -316,6 +371,7 @@ export class ConfigProvider {
   }
 
   private backwardCompatibility() {
+    this.logger.debug('Config: setting backwardCompatibility');
     // these ifs are to avoid migration problems
     if (this.configCache.bws) {
       this.configCache.bws = this.configDefault.bws;
@@ -332,11 +388,17 @@ export class ConfigProvider {
       if (this.configCache.showIntegration.giftcards !== false) {
         this.configCache.showIntegration.giftcards = this.configDefault.showIntegration.giftcards;
       }
-      if (this.configCache.showIntegration.simplex !== false) {
-        this.configCache.showIntegration.simplex = this.configDefault.showIntegration.simplex;
+      if (this.configCache.showIntegration.buycrypto !== false) {
+        this.configCache.showIntegration.buycrypto = this.configDefault.showIntegration.buycrypto;
+      }
+      if (this.configCache.showIntegration.exchangecrypto !== false) {
+        this.configCache.showIntegration.exchangecrypto = this.configDefault.showIntegration.exchangecrypto;
       }
       if (this.configCache.showIntegration.coinbase !== false) {
         this.configCache.showIntegration.coinbase = this.configDefault.showIntegration.coinbase;
+      }
+      if (this.configCache.showIntegration.newWalletConnect !== true) {
+        this.configCache.showIntegration.newWalletConnect = this.configDefault.showIntegration.newWalletConnect;
       }
     }
     if (!this.configCache.pushNotifications) {
@@ -363,7 +425,10 @@ export class ConfigProvider {
       this.configCache.wallet.settings.unitCode = this.configDefault.wallet.settings.unitCode;
     }
 
-    if (!this.configCache.theme || !this.configCache.theme.enabled) {
+    if (
+      !this.configCache.theme ||
+      (this.configCache.theme && !this.configCache.theme.enabled)
+    ) {
       this.configCache.theme = this.configDefault.theme;
     }
 
@@ -373,6 +438,14 @@ export class ConfigProvider {
 
     if (!this.configCache.legacyQrCode) {
       this.configCache.legacyQrCode = this.configDefault.legacyQrCode;
+    }
+
+    if (!this.configCache.navigation) {
+      this.configCache.navigation = this.configDefault.navigation;
+    }
+
+    if (!this.configCache.feeLevels) {
+      this.configCache.feeLevels = this.configDefault.feeLevels;
     }
   }
 

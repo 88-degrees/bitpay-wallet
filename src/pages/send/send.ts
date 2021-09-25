@@ -1,21 +1,24 @@
 import { Component, ViewChild } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
-import { Events, NavController, NavParams } from 'ionic-angular';
+import { Events, NavController, NavParams, Platform } from 'ionic-angular';
 import * as _ from 'lodash';
+import { Subscription } from 'rxjs';
 import { Observable } from 'rxjs/Observable';
 
 // Providers
 import { ActionSheetProvider } from '../../providers/action-sheet/action-sheet';
 import { AddressProvider } from '../../providers/address/address';
+import { AnalyticsProvider } from '../../providers/analytics/analytics';
 import { AppProvider } from '../../providers/app/app';
 import { BwcErrorProvider } from '../../providers/bwc-error/bwc-error';
-import { Coin, CurrencyProvider } from '../../providers/currency/currency';
+import { ClipboardProvider } from '../../providers/clipboard/clipboard';
+import { CurrencyProvider } from '../../providers/currency/currency';
 import { ErrorsProvider } from '../../providers/errors/errors';
 import { IncomingDataProvider } from '../../providers/incoming-data/incoming-data';
 import { Logger } from '../../providers/logger/logger';
 import { OnGoingProcessProvider } from '../../providers/on-going-process/on-going-process';
 import { PayproProvider } from '../../providers/paypro/paypro';
-import { ProfileProvider } from '../../providers/profile/profile';
+import { PlatformProvider } from '../../providers/platform/platform';
 
 // Pages
 import { CopayersPage } from '../add/copayers/copayers';
@@ -24,7 +27,6 @@ import { JoinWalletPage } from '../add/join-wallet/join-wallet';
 import { BitPayCardIntroPage } from '../integrations/bitpay-card/bitpay-card-intro/bitpay-card-intro';
 import { CoinbasePage } from '../integrations/coinbase/coinbase';
 import { SelectInvoicePage } from '../integrations/invoice/select-invoice/select-invoice';
-import { ShapeshiftPage } from '../integrations/shapeshift/shapeshift';
 import { SimplexPage } from '../integrations/simplex/simplex';
 import { PaperWalletPage } from '../paper-wallet/paper-wallet';
 import { ScanPage } from '../scan/scan';
@@ -42,17 +44,23 @@ import { MultiSendPage } from './multi-send/multi-send';
 export class SendPage {
   public wallet: any;
   public search: string = '';
-  public hasWallets: boolean;
+  public isCordova: boolean;
   public invalidAddress: boolean;
+  public validDataFromClipboard;
+  private onResumeSubscription: Subscription;
   private validDataTypeMap: string[] = [
     'BitcoinAddress',
     'BitcoinCashAddress',
     'EthereumAddress',
     'EthereumUri',
     'RippleAddress',
+    'DogecoinAddress',
+    'LitecoinAddress',
     'RippleUri',
     'BitcoinUri',
     'BitcoinCashUri',
+    'DogecoinUri',
+    'LitecoinUri',
     'BitPayUri'
   ];
   private pageMap = {
@@ -65,7 +73,6 @@ export class SendPage {
     ImportWalletPage,
     JoinWalletPage,
     PaperWalletPage,
-    ShapeshiftPage,
     SimplexPage,
     SelectInvoicePage,
     WalletDetailsPage
@@ -76,21 +83,31 @@ export class SendPage {
     private navCtrl: NavController,
     private navParams: NavParams,
     private payproProvider: PayproProvider,
-    private profileProvider: ProfileProvider,
     private logger: Logger,
     private incomingDataProvider: IncomingDataProvider,
     private addressProvider: AddressProvider,
     private events: Events,
     private actionSheetProvider: ActionSheetProvider,
+    private analyticsProvider: AnalyticsProvider,
     private appProvider: AppProvider,
     private translate: TranslateService,
     private errorsProvider: ErrorsProvider,
     private onGoingProcessProvider: OnGoingProcessProvider,
-    private bwcErrorProvider: BwcErrorProvider
+    private bwcErrorProvider: BwcErrorProvider,
+    private plt: Platform,
+    private clipboardProvider: ClipboardProvider,
+    private platformProvider: PlatformProvider
   ) {
     this.wallet = this.navParams.data.wallet;
+    this.isCordova = this.platformProvider.isCordova;
     this.events.subscribe('Local/AddressScan', this.updateAddressHandler);
     this.events.subscribe('SendPageRedir', this.SendPageRedirEventHandler);
+    this.events.subscribe('Desktop/onFocus', () => {
+      this.setDataFromClipboard();
+    });
+    this.onResumeSubscription = this.plt.resume.subscribe(() => {
+      this.setDataFromClipboard();
+    });
   }
 
   @ViewChild('transferTo')
@@ -100,15 +117,21 @@ export class SendPage {
     this.logger.info('Loaded: SendPage');
   }
 
-  ionViewWillEnter() {
-    this.hasWallets = !_.isEmpty(
-      this.profileProvider.getWallets({ coin: this.wallet.coin })
-    );
+  ionViewDidEnter() {
+    this.setDataFromClipboard();
   }
 
   ngOnDestroy() {
     this.events.unsubscribe('Local/AddressScan', this.updateAddressHandler);
     this.events.unsubscribe('SendPageRedir', this.SendPageRedirEventHandler);
+    this.events.unsubscribe('Desktop/onFocus');
+    this.onResumeSubscription.unsubscribe();
+  }
+
+  private async setDataFromClipboard() {
+    this.validDataFromClipboard = await this.clipboardProvider.getValidData(
+      this.wallet.coin
+    );
   }
 
   private SendPageRedirEventHandler: any = nextView => {
@@ -141,10 +164,11 @@ export class SendPage {
     this.navCtrl.push(ScanPage, { fromSend: true }, { animate: false });
   }
 
-  public showOptions(coin: Coin) {
+  public showOptions(coin: string) {
     return (
-      this.currencyProvider.isMultiSend(coin) ||
-      this.currencyProvider.isUtxoCoin(coin)
+      (this.currencyProvider.isMultiSend(coin) ||
+        this.currencyProvider.isUtxoCoin(coin)) &&
+      !this.shouldShowZeroState()
     );
   }
 
@@ -248,13 +272,15 @@ export class SendPage {
               this.wallet.coin.toUpperCase() === option.currency
           );
           if (selected) {
+            const activePage = 'SendPage';
             const isValid = this.checkCoinAndNetwork(selected, true);
             if (isValid) {
               this.incomingDataProvider.goToPayPro(
                 payproOptions.payProUrl,
                 this.wallet.coin,
                 undefined,
-                true
+                true,
+                activePage
               );
             }
           } else {
@@ -318,13 +344,32 @@ export class SendPage {
 
     optionsSheet.onDidDismiss(option => {
       if (option == 'multi-send')
-        this.navCtrl.push(MultiSendPage, {
-          wallet: this.wallet
-        });
+        this.navCtrl
+          .push(MultiSendPage, {
+            wallet: this.wallet
+          })
+          .then(() => {
+            this.analyticsProvider.logEvent('multi_send_clicked', {
+              coin: this.wallet.coin
+            });
+          });
       if (option == 'select-inputs')
-        this.navCtrl.push(SelectInputsPage, {
-          wallet: this.wallet
-        });
+        this.navCtrl
+          .push(SelectInputsPage, {
+            wallet: this.wallet
+          })
+          .then(() => {
+            this.analyticsProvider.logEvent('select_inputs_clicked', {
+              coin: this.wallet.coin
+            });
+          });
     });
+  }
+
+  public pasteFromClipboard() {
+    this.search = this.validDataFromClipboard || '';
+    this.validDataFromClipboard = null;
+    this.clipboardProvider.clear();
+    this.processInput();
   }
 }

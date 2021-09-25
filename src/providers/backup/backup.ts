@@ -69,8 +69,7 @@ export class BackupProvider {
         delete b.credentials.keyId;
       }
       if (wallet.canSign && !opts.noSign) {
-        const k: any = {};
-        Object.assign(k, this.keyProvider.getKey(wallet.credentials.keyId));
+        const k = this.keyProvider.getKey(wallet.credentials.keyId).toObj();
         if (opts.password) {
           const k1 = this.keyProvider.get(
             wallet.credentials.keyId,

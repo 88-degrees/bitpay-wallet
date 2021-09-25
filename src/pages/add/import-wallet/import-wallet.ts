@@ -10,6 +10,7 @@ import {
 
 // Pages
 import { CoinSelectorPage } from '../../includes/coin-selector/coin-selector';
+import { DisclaimerPage } from '../../onboarding/disclaimer/disclaimer';
 import { ScanPage } from '../../scan/scan';
 
 // Providers
@@ -17,7 +18,7 @@ import { ActionSheetProvider } from '../../../providers/action-sheet/action-shee
 import { BwcErrorProvider } from '../../../providers/bwc-error/bwc-error';
 import { BwcProvider } from '../../../providers/bwc/bwc';
 import { ConfigProvider } from '../../../providers/config/config';
-import { Coin, CurrencyProvider } from '../../../providers/currency/currency';
+import { CurrencyProvider } from '../../../providers/currency/currency';
 import { DerivationPathHelperProvider } from '../../../providers/derivation-path-helper/derivation-path-helper';
 import { ErrorsProvider } from '../../../providers/errors/errors';
 import { Logger } from '../../../providers/logger/logger';
@@ -53,6 +54,7 @@ export class ImportWalletPage {
   public cancelText: string;
   public showAdvOpts: boolean;
   public title: string;
+  public isOnboardingFlow: boolean;
 
   constructor(
     private navCtrl: NavController,
@@ -88,6 +90,7 @@ export class ImportWalletPage {
 
     this.code = this.navParams.data.code;
     this.processedInfo = this.processWalletInfo(this.code);
+    this.isOnboardingFlow = this.navParams.data.isOnboardingFlow;
 
     this.keyId = this.navParams.data.keyId; // re-import option
     this.title = !this.keyId
@@ -111,6 +114,13 @@ export class ImportWalletPage {
     this.setForm();
   }
 
+  ionViewWillEnter() {
+    const previousView = this.navCtrl.getPrevious();
+    if (this.isOnboardingFlow && previousView.name === 'LockMethodPage') {
+      this.navCtrl.removeView(previousView);
+    }
+  }
+
   ngOnDestroy() {
     this.events.unsubscribe('Local/BackupScan', this.updateWordsHandler);
   }
@@ -126,7 +136,7 @@ export class ImportWalletPage {
     this.setForm();
   };
 
-  public getCoinName(coin: Coin) {
+  public getCoinName(coin: string) {
     return this.currencyProvider.getCoinName(coin);
   }
 
@@ -249,9 +259,15 @@ export class ImportWalletPage {
       this.profileProvider.setNewWalletGroupOrder(wallets[0].credentials.keyId);
     }
 
-    this.navCtrl.popToRoot().then(() => {
-      this.events.publish('Local/FetchWallets');
-    });
+    if (!this.isOnboardingFlow)
+      this.navCtrl.popToRoot().then(() => {
+        this.events.publish('Local/FetchWallets');
+      });
+    else {
+      this.navCtrl.push(DisclaimerPage, {
+        keyId: wallets[0].credentials.keyId
+      });
+    }
   }
 
   private importExtendedPrivateKey(xPrivKey, opts) {
@@ -286,6 +302,7 @@ export class ImportWalletPage {
       .importMnemonic(words, opts)
       .then((wallets: any[]) => {
         this.onGoingProcessProvider.clear();
+        if (!wallets) return;
         this.finish(wallets);
       })
       .catch(err => {
@@ -339,7 +356,7 @@ export class ImportWalletPage {
     return;
   }
 
-  public setOptsAndCreate(coin: Coin): void {
+  public setOptsAndCreate(coin: string): void {
     const opts: Partial<WalletOptions> = {
       keyId: undefined,
       name: this.currencyProvider.getCoinName(coin),
@@ -349,7 +366,7 @@ export class ImportWalletPage {
       networkName: 'livenet',
       bwsurl: this.importForm.value.bwsURL,
       singleAddress: this.currencyProvider.isSingleAddress(coin),
-      coin: Coin[coin.toUpperCase()]
+      coin: coin.toLowerCase()
     };
 
     const words = this.importForm.value.words;
@@ -363,7 +380,21 @@ export class ImportWalletPage {
       opts.mnemonic = words;
     }
 
-    const derivationPath = this.importForm.value.derivationPath;
+    let derivationPath;
+    if (this.importForm.value.derivationPathEnabled) {
+      derivationPath = this.importForm.value.derivationPath;
+    } else {
+      if (this.derivationPathHelperProvider[`default${coin.toUpperCase()}`]) {
+        derivationPath = this.derivationPathHelperProvider[
+          `default${coin.toUpperCase()}`
+        ];
+      } else {
+        const title = this.translate.instant('Error');
+        const subtitle = `No derivation path for: default${coin.toUpperCase()}`;
+        this.showErrorInfoSheet(title, subtitle);
+        return;
+      }
+    }
     opts.networkName = this.derivationPathHelperProvider.getNetworkName(
       derivationPath
     );
@@ -374,9 +405,8 @@ export class ImportWalletPage {
 
     // set opts.useLegacyPurpose
     if (
-      this.derivationPathHelperProvider.parsePath(
-        this.importForm.value.derivationPath
-      ).purpose == "44'" &&
+      this.derivationPathHelperProvider.parsePath(derivationPath).purpose ==
+        "44'" &&
       opts.n > 1
     ) {
       opts.useLegacyPurpose = true;
@@ -386,9 +416,8 @@ export class ImportWalletPage {
     // set opts.useLegacyCoinType
     if (
       coin == 'bch' &&
-      this.derivationPathHelperProvider.parsePath(
-        this.importForm.value.derivationPath
-      ).coinCode == "0'"
+      this.derivationPathHelperProvider.parsePath(derivationPath).coinCode ==
+        "0'"
     ) {
       opts.useLegacyCoinType = true;
       this.logger.debug('Using 0 for BCH creation');
@@ -416,7 +445,7 @@ export class ImportWalletPage {
 
     if (
       !this.derivationPathHelperProvider.isValidDerivationPathCoin(
-        this.importForm.value.derivationPath,
+        derivationPath,
         coin
       )
     ) {
@@ -590,11 +619,14 @@ export class ImportWalletPage {
       const wordList = words.trim().split(/[\u3000\s]+/);
 
       if (wordList.length % 3 != 0) {
-        const title = this.translate.instant('Error');
-        const subtitle = this.translate.instant(
-          'Wrong number of recovery words:'
+        this.logger.warn('Incorrect words length');
+        const errorInfoSheet = this.actionSheetProvider.createInfoSheet(
+          'recovery-phrase-length',
+          {
+            wordListLength: wordList.length
+          }
         );
-        this.showErrorInfoSheet(title, subtitle + ' ' + wordList.length);
+        errorInfoSheet.present();
         return;
       }
     }

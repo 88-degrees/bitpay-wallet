@@ -130,7 +130,14 @@ export class BitPayIdProvider {
 
               this.logger.debug('BitPayID: successfully paired');
               const { data } = user;
-              const { email, familyName, givenName, experiments } = data;
+              const {
+                email,
+                familyName,
+                givenName,
+                experiments,
+                incentiveLevel,
+                incentiveLevelId
+              } = data;
 
               if (experiments && experiments.includes('NADebitCard')) {
                 this.persistenceProvider.setCardExperimentFlag('enabled');
@@ -147,7 +154,9 @@ export class BitPayIdProvider {
                   email,
                   token: token.data,
                   familyName: familyName || '',
-                  givenName: givenName || ''
+                  givenName: givenName || '',
+                  incentiveLevel,
+                  incentiveLevelId
                 })
               ]);
 
@@ -165,11 +174,17 @@ export class BitPayIdProvider {
     });
   }
 
-  public async apiCall(method: string, params: any = {}) {
+  public async apiCall(
+    method: string,
+    params: any = {},
+    userShopperToken?: string
+  ) {
     const url = `${this.BITPAY_API_URL}/api/v2/`;
-    const token = await this.persistenceProvider.getBitPayIdPairingToken(
-      Network[this.NETWORK]
-    );
+    let token =
+      userShopperToken ||
+      (await this.persistenceProvider.getBitPayIdPairingToken(
+        Network[this.NETWORK]
+      ));
     const json = {
       method,
       params: JSON.stringify(params),
@@ -190,10 +205,37 @@ export class BitPayIdProvider {
     if (res && res.error) {
       throw new Error(res.error);
     }
-    return res && res.data;
+    return (res && res.data) || res;
   }
 
-  getAppIdentity() {
+  public async refreshUserInfo() {
+    this.logger.debug('Refreshing user info');
+    const userInfo = await this.apiCall('getBasicInfo');
+    const network = Network[this.getEnvironment().network];
+    await this.persistenceProvider.setBitPayIdUserInfo(network, userInfo);
+  }
+
+  public async unlockInvoice(invoiceId: string): Promise<string> {
+    const isPaired = !!(await this.persistenceProvider.getBitPayIdPairingToken(
+      Network[this.NETWORK]
+    ));
+    if (!isPaired) return 'pairingRequired';
+
+    const tokens = await this.apiCall('getProductTokens');
+    const { token } = tokens.find(t => t.facade === 'userShopper');
+    if (!token) return 'userShopperNotFound';
+
+    const { meetsRequiredTier } = await this.apiCall(
+      'unlockInvoice',
+      { invoiceId },
+      token
+    );
+    if (!meetsRequiredTier) return 'tierNotMet';
+
+    return 'unlockSuccess';
+  }
+
+  getAppIdentity(): Promise<{ pub: string; priv: string }> {
     const network = Network[this.getEnvironment().network];
     return new Promise((resolve, reject) => {
       this.appIdentityProvider.getIdentity(network, (err, appIdentity) => {
@@ -208,28 +250,28 @@ export class BitPayIdProvider {
   public async disconnectBitPayID(successCallback, errorCallback) {
     const network = Network[this.getEnvironment().network];
 
-    // @ts-ignore
-    const user: any = await this.persistenceProvider.getBitPayIdUserInfo(
-      network
-    );
-
     try {
       await Promise.all([
         this.persistenceProvider.removeBitPayIdPairingToken(network),
         this.persistenceProvider.removeBitPayIdUserInfo(network),
         this.persistenceProvider.removeBitpayAccountV2(network)
       ]);
-      this.events.publish('bitpayIdDisconnected');
+
       this.iab.refs.card.executeScript(
         {
           code: `window.postMessage(${JSON.stringify({
-            message: 'bitpayIdDisconnected'
+            message: 'bitPayIdDisconnected'
           })}, '*')`
         },
         () => {
           successCallback();
         }
       );
+
+      this.events.publish('BitPayId/Disconnected');
+      this.events.publish('CardAdvertisementUpdate', {
+        status: 'disconnected'
+      });
     } catch (err) {
       errorCallback(err);
     }

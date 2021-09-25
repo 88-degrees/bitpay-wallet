@@ -9,13 +9,12 @@ import * as _ from 'lodash';
 
 // Providers
 import { AddressBookProvider } from '../../../providers/address-book/address-book';
-import { AddressProvider } from '../../../providers/address/address';
 import {
-  Coin,
   CoinsMap,
   CurrencyProvider
 } from '../../../providers/currency/currency';
 import { Logger } from '../../../providers/logger/logger';
+import { PlatformProvider } from '../../../providers/platform/platform';
 import { PopupProvider } from '../../../providers/popup/popup';
 import { ProfileProvider } from '../../../providers/profile/profile';
 import { WalletProvider } from '../../../providers/wallet/wallet';
@@ -28,7 +27,7 @@ export interface FlatWallet {
   color: string;
   name: string;
   recipientType: 'wallet';
-  coin: Coin;
+  coin: string;
   network: 'testnet' | 'livenet';
   m: number;
   n: number;
@@ -48,7 +47,7 @@ export class TransferToPage {
   public wallets = {} as CoinsMap<any>;
   public hasWallets = {} as CoinsMap<boolean>;
   public walletList = {} as CoinsMap<FlatWallet[]>;
-  public availableCoins: Coin[];
+  public availableCoins: string[];
   public contactsList = [];
   public filteredContactsList = [];
   public filteredWallets = [];
@@ -63,8 +62,13 @@ export class TransferToPage {
   public _useAsModal: boolean;
   public _fromWalletDetails: boolean;
   public hasContactsOrWallets: boolean;
+  public updatingContactsList: boolean = false;
+  public itemTapped: boolean = false;
 
+  private _delayTimeOut: number = 700;
   private _fromSelectInputs: boolean;
+  private _fromMultiSend: boolean;
+
   private CONTACTS_SHOW_LIMIT: number = 10;
   private currentContactsPage: number = 0;
 
@@ -76,8 +80,8 @@ export class TransferToPage {
     private walletProvider: WalletProvider,
     private addressBookProvider: AddressBookProvider,
     private logger: Logger,
+    private platformProvider: PlatformProvider,
     private popupProvider: PopupProvider,
-    private addressProvider: AddressProvider,
     private viewCtrl: ViewController,
     private events: Events
   ) {
@@ -86,6 +90,10 @@ export class TransferToPage {
       this.wallets[coin] = this.profileProvider.getWallets({ coin });
       this.hasWallets[coin] = !_.isEmpty(this.wallets[coin]);
     }
+    this._delayTimeOut =
+      this.platformProvider.isIOS || this.platformProvider.isAndroid
+        ? 700
+        : 100;
   }
 
   @Input()
@@ -100,7 +108,7 @@ export class TransferToPage {
       _.groupBy(this.walletList[this._wallet.coin], 'keyId')
     );
 
-    this.updateContactsList();
+    this.delayUpdateContactsList(this._delayTimeOut);
   }
 
   get wallet() {
@@ -144,7 +152,16 @@ export class TransferToPage {
     return this._fromSelectInputs;
   }
 
-  public getCoinName(coin: Coin) {
+  @Input()
+  set fromMultiSend(fromMultiSend: boolean) {
+    this._fromMultiSend = fromMultiSend;
+  }
+
+  get fromMultiSend() {
+    return this._fromMultiSend;
+  }
+
+  public getCoinName(coin: string) {
     return this.currencyProvider.getCoinName(coin);
   }
 
@@ -160,39 +177,49 @@ export class TransferToPage {
       .filter(wallet => this.filterIrrelevantRecipients(wallet));
   }
 
-  private updateContactsList(): void {
-    this.addressBookProvider.list().then(ab => {
-      this.hasContacts = _.isEmpty(ab) ? false : true;
-      if (!this.hasContacts) return;
+  delayUpdateContactsList(delayTime: number = 700) {
+    if (this.updatingContactsList) return;
+    this.updatingContactsList = true;
+    setTimeout(() => {
+      this.updateContactsList();
+      this.updatingContactsList = false;
+    }, delayTime || 700);
+  }
 
-      let contactsList = [];
-      _.each(ab, (v, k: string) => {
-        const addrData = this.addressProvider.getCoinAndNetwork(k);
-        contactsList.push({
-          name: _.isObject(v) ? v.name : v,
-          address: k,
-          network: addrData.network,
-          email: _.isObject(v) ? v.email : null,
-          recipientType: 'contact',
-          coin: addrData.coin,
-          getAddress: () => Promise.resolve(k),
-          destinationTag: v.tag
+  private updateContactsList(): void {
+    this.addressBookProvider
+      .list(this._wallet ? this._wallet.network : null)
+      .then(ab => {
+        this.hasContacts = _.isEmpty(ab) ? false : true;
+        if (!this.hasContacts) return;
+
+        let contactsList = [];
+        _.each(ab, c => {
+          contactsList.push({
+            name: c.name,
+            address: c.address,
+            network: c.network,
+            email: c.email,
+            recipientType: 'contact',
+            coin: c.coin,
+            getAddress: () => Promise.resolve(c.address),
+            destinationTag: c.tag
+          });
         });
+        contactsList = _.orderBy(contactsList, 'name');
+        this.contactsList = contactsList.filter(c =>
+          this.filterIrrelevantRecipients(c)
+        );
+        let shortContactsList = _.clone(
+          this.contactsList.slice(
+            0,
+            (this.currentContactsPage + 1) * this.CONTACTS_SHOW_LIMIT
+          )
+        );
+        this.filteredContactsList = _.clone(shortContactsList);
+        this.contactsShowMore =
+          this.contactsList.length > shortContactsList.length;
       });
-      contactsList = _.orderBy(contactsList, 'name');
-      this.contactsList = contactsList.filter(c =>
-        this.filterIrrelevantRecipients(c)
-      );
-      let shortContactsList = _.clone(
-        this.contactsList.slice(
-          0,
-          (this.currentContactsPage + 1) * this.CONTACTS_SHOW_LIMIT
-        )
-      );
-      this.filteredContactsList = _.clone(shortContactsList);
-      this.contactsShowMore =
-        this.contactsList.length > shortContactsList.length;
-    });
   }
 
   private flattenWallet(wallet): FlatWallet {
@@ -216,10 +243,12 @@ export class TransferToPage {
   private filterIrrelevantRecipients(recipient: {
     coin: string;
     network: string;
+    walletId: string;
   }): boolean {
     return this._wallet
       ? this._wallet.coin === recipient.coin &&
-          this._wallet.network === recipient.network
+          this._wallet.network === recipient.network &&
+          this._wallet.id !== recipient.walletId
       : true;
   }
 
@@ -239,7 +268,7 @@ export class TransferToPage {
           ? false
           : true;
     } else {
-      this.updateContactsList();
+      this.delayUpdateContactsList(this._delayTimeOut);
       this.filteredWallets = [];
       this.filteredWalletsByKeys = [];
     }
@@ -269,6 +298,7 @@ export class TransferToPage {
   }
 
   public close(item): void {
+    this.itemTapped = true;
     item
       .getAddress()
       .then((addr: string) => {
@@ -301,6 +331,7 @@ export class TransferToPage {
             network: item.network,
             useAsModal: this._useAsModal,
             fromWalletDetails: this._fromWalletDetails,
+            fromMultiSend: this._fromMultiSend,
             destinationTag: item.destinationTag
           });
         }
@@ -308,5 +339,6 @@ export class TransferToPage {
       .catch(err => {
         this.logger.error('Send: could not getAddress', err);
       });
+    this.itemTapped = false;
   }
 }

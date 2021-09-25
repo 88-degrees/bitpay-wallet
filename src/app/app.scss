@@ -83,8 +83,6 @@ ion-label {
   display: -webkit-box;
   line-clamp: 2;
   -webkit-line-clamp: 2;
-  box-orient: vertical;
-  -webkit-box-orient: vertical;
 }
 
 // Header
@@ -166,6 +164,50 @@ ion-header.bp-header .toolbar {
   height: 70px;
   width: 100%;
   font-size: 18px;
+}
+
+// Themes
+// --------------------------------------------------
+// This is just to make a smooth transition between themes
+@mixin transition {
+  transition: all, color, 150ms cubic-bezier(0, 0, 0.3, 0.3) !important;
+}
+
+.theme-transition {
+  ion-content.add-bottom-safe-area {
+    .fixed-content,
+    .scroll-content {
+      @include transition();
+    }
+  }
+
+  ion-content.add-padding-bottom,
+  .add-padding-bottom ion-content {
+    .fixed-content,
+    .scroll-content {
+      @include transition();
+    }
+  }
+
+  ion-content,
+  .content-ios .toolbar-background-ios,
+  .toolbar-background-md,
+  .toolbar-title,
+  .back-button-ios,
+  .back-button-md,
+  .header .toolbar-background {
+    @include transition();
+  }
+
+  // Lists
+  .bp-list.settings-list {
+    .item {
+      &.item-ios,
+      &.item-md {
+        @include transition();
+      }
+    }
+  }
 }
 
 /* Refresh component */
@@ -275,6 +317,14 @@ ion-spinner * {
 
 .xrp-background {
   background-color: #000000;
+}
+
+.doge-background {
+  background-color: #d8c172;
+}
+
+.ltc-background {
+  background-color: #a6a9aa;
 }
 
 button.item {
@@ -490,15 +540,11 @@ ion-app,
   background: transparent !important;
 }
 
-.button-standard {
-  width: 90%;
-  max-width: 300px;
-  margin-left: auto;
-  margin-right: auto;
+.button-standard-full {
+  width: 100%;
+  margin: 5px 16px 25px 16px;
   display: flex;
   min-height: 60px;
-  margin-top: 1.5rem;
-  margin-bottom: 1.5rem;
   border-radius: 5px;
   box-shadow: none;
   font-weight: 400;
@@ -510,6 +556,32 @@ ion-app,
 
   span {
     @extend .two-lines;
+  }
+  &.no-margin-bottom {
+    margin-bottom: 0px;
+  }
+}
+
+.button-standard {
+  width: 85%;
+  max-width: 300px;
+  margin: 5px auto 25px auto;
+  display: flex;
+  min-height: 60px;
+  border-radius: 5px;
+  box-shadow: none;
+  font-weight: 400;
+  font-size: 18px;
+
+  .button-inner {
+    padding: 2px;
+  }
+
+  span {
+    @extend .two-lines;
+  }
+  &.no-margin-bottom {
+    margin-bottom: 0px;
   }
 }
 
@@ -561,14 +633,6 @@ ion-alert .alert-message {
   overflow-y: auto;
 }
 
-.mdToastAfterHeader {
-  top: $toolbar-md-height;
-}
-
-.iosToastAfterHeader {
-  top: $toolbar-ios-height;
-}
-
 .header-extend {
   background: $toolbar-background;
   height: 180px;
@@ -584,7 +648,7 @@ ion-alert .alert-message {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: #9b9bab;
+  color: color($colors, light-grey);
   font-size: 16px;
   font-weight: 500;
   margin: 20px 16px 10px 20px;
@@ -777,8 +841,7 @@ page-bitpay-card {
   transform: translate3d(0, 0, 0);
 
   .tab-button {
-    max-width: 15vw;
-    min-width: 80px; // Prevent the names of the tabs from disappearing
+    max-width: 80px;
 
     .tab-button-text {
       display: block;
@@ -793,6 +856,9 @@ ion-tabs {
     display: none;
     content: url('../assets/img/tab-icons/tab-home-active.svg')
       url('../assets/img/tab-icons/tab-wallets-active.svg')
+      url('../assets/img/tab-icons/tab-transact.svg')
+      url('../assets/img/tab-icons/tab-scan.svg')
+      url('../assets/img/tab-icons/tab-copay-scan.svg')
       url('../assets/img/tab-icons/tab-cards-active.svg')
       url('../assets/img/tab-icons/tab-settings-active.svg');
   }
@@ -809,6 +875,7 @@ $wallets-active: url('../assets/img/tab-icons/tab-wallets-active.svg') no-repeat
   50% 50%;
 $wallets-inactive: url('../assets/img/tab-icons/tab-wallets.svg') no-repeat 50%
   50%;
+$transact: url('../assets/img/tab-icons/tab-transact.svg') no-repeat 50% 50%;
 $cards-active: url('../assets/img/tab-icons/tab-cards-active.svg') no-repeat 50%
   50%;
 $cards-inactive: url('../assets/img/tab-icons/tab-cards.svg') no-repeat 50% 50%;
@@ -816,6 +883,12 @@ $settings-active: url('../assets/img/tab-icons/tab-settings-active.svg')
   no-repeat 50% 50%;
 $settings-inactive: url('../assets/img/tab-icons/tab-settings.svg') no-repeat
   50% 50%;
+$scan-active: url('../assets/img/tab-icons/tab-scan-active.svg') no-repeat 50%
+  50%;
+$scan-inactive: url('../assets/img/tab-icons/tab-scan.svg') no-repeat 50% 50%;
+$copay-scan-active: url('../assets/img/scan-ico.svg') no-repeat 50% 50%;
+$copay-scan-inactive: url('../assets/img/tab-icons/tab-copay-scan.svg')
+  no-repeat 50% 50%;
 
 ion-icon {
   &[class*='tab-'] {
@@ -846,6 +919,43 @@ ion-icon {
     }
   }
 
+  &[class*='tab-transact'] {
+    background: $transact;
+    background-size: contain;
+    width: 36px;
+    height: 36px !important;
+
+    .tab-button[aria-selected='true'] & {
+      background: $transact;
+      background-size: contain;
+    }
+  }
+
+  &[class*='tab-scan'] {
+    background: $scan-inactive;
+    background-size: contain;
+    width: 36px;
+    height: 36px !important;
+
+    .tab-button[aria-selected='true'] & {
+      background: $scan-active;
+      background-size: contain;
+    }
+  }
+
+  &[class*='tab-copay-scan'] {
+    background: $copay-scan-inactive;
+    background-size: contain;
+    margin-top: 0px;
+    opacity: 0.2;
+
+    .tab-button[aria-selected='true'] & {
+      background: $copay-scan-active;
+      background-size: contain;
+      opacity: 1;
+    }
+  }
+
   &[class*='tab-cards'] {
     background: $cards-inactive;
     background-size: contain;
@@ -871,4 +981,28 @@ ion-icon {
   box-sizing: border-box;
   border: 0.5px solid rgba(155, 163, 174, 0.1);
   margin: 0px 25px;
+}
+
+.buy-crypto-currency-2 .alert-radio-group {
+  button:nth-child(2) {
+    border-bottom: 1px solid #dedede;
+  }
+}
+
+.buy-crypto-currency-3 .alert-radio-group {
+  button:nth-child(3) {
+    border-bottom: 1px solid #dedede;
+  }
+}
+.toast-bg {
+  .toast-wrapper {
+    background-color: color($colors, primary);
+    color: white;
+  }
+  .toast-message {
+    white-space: pre-line;
+  }
+}
+.in-app-notification-modal {
+  height: calc(env(safe-area-inset-top) + 100px);
 }

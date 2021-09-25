@@ -9,14 +9,14 @@
   </ion-navbar>
 </ion-header>
 <ion-content #scrollArea>
-  <div class="wrapper">
+  <div class="wrapper" [hidden]="platformProvider.isMacApp()">
     <expandable-header [scrollArea]="scrollArea" [fadeFactor]="5" [disableFade]="true" #expandableHeader>
       <ion-toolbar class="wide-header__title">
         <expandable-header-primary> {{title}} </expandable-header-primary>
       </ion-toolbar>
     </expandable-header>
 
-    <search-bar *ngIf="!category || category === 'All'" [scrollArea]="wideHeaderPage?.scrollArea"
+    <search-bar *ngIf="!category || category === 'All'" [scrollArea]="scrollArea"
       (search)="onSearch($event.target.value)" placeholder="{{ 'Search for a brand' | translate }}"></search-bar>
 
     <div *ngIf="category && category !== 'All'" class="section-divider"></div>
@@ -94,18 +94,18 @@
               <ion-note class="card-list-item__note ellipsis"
                 *ngIf="merchant.giftCards[0] && !merchant.giftCards[0].supportedAmounts">
                 {{ merchant.giftCards[0].minAmount | formatCurrency:
-                merchant.giftCards[0].currency:0 }} — {{
-                merchant.giftCards[0].maxAmount | formatCurrency:
-                merchant.giftCards[0].currency:0 }}
+                  merchant.giftCards[0].currency:0 }} — {{
+                  merchant.giftCards[0].maxAmount | formatCurrency:
+                  merchant.giftCards[0].currency:0 }}
               </ion-note>
               <ion-note class="card-list-item__note ellipsis"
                 *ngIf="merchant.giftCards[0] && merchant.giftCards[0].supportedAmounts">
                 <span *ngFor="
-                    let amount of merchant.giftCards[0].supportedAmounts;
-                    let last = last
-                  ">
+                      let amount of merchant.giftCards[0].supportedAmounts;
+                      let last = last
+                    ">
                   {{ amount | formatCurrency:
-                  merchant.giftCards[0].currency:'minimal' }}<span *ngIf="!last">,</span>
+                    merchant.giftCards[0].currency:'minimal' }}<span *ngIf="!last">,</span>
                 </span>
               </ion-note>
             </div>
@@ -128,5 +128,27 @@
         </div>
       </div>
     </div>
+  </div>
+  <div class="wrapper" [hidden]="!platformProvider.isMacApp()">
+    <expandable-header [scrollArea]="scrollArea" [fadeFactor]="5" [disableFade]="true" #expandableHeader>
+      <ion-toolbar class="wide-header__title">
+        <expandable-header-primary> {{title}} </expandable-header-primary>
+      </ion-toolbar>
+    </expandable-header>
+
+    <action-card-v4 *ngIf="platformProvider.isMacApp()" (click)="launchExtension()" tappable>
+      <div action-card-header>
+        <div class="home-gift-card-header" style="padding: 0;">
+          <div class="home-gift-card-image" style="margin-bottom: -6px;">
+            <img src="assets/img/gift-cards/extension-banner.png" style="max-height: unset;" />
+          </div>
+        </div>
+      </div>
+      <div action-card-title translate>Shop with Crypto</div>
+      <div action-card-body [clamp]="2">
+        Spend crypto at 150+ major brands.
+      </div>
+      <div action-card-button translate>Get on Chrome</div>
+    </action-card-v4>
   </div>
 </ion-content>

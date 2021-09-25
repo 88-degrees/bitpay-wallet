@@ -10,10 +10,11 @@ import {
 import * as _ from 'lodash';
 
 // Providers
+import { ActionSheetProvider } from '../../../providers/action-sheet/action-sheet';
 import { BwcErrorProvider } from '../../../providers/bwc-error/bwc-error';
 import { BwcProvider } from '../../../providers/bwc/bwc';
 import { ConfigProvider } from '../../../providers/config/config';
-import { Coin, CurrencyProvider } from '../../../providers/currency/currency';
+import { CurrencyProvider } from '../../../providers/currency/currency';
 import { DerivationPathHelperProvider } from '../../../providers/derivation-path-helper/derivation-path-helper';
 import { ErrorsProvider } from '../../../providers/errors/errors';
 import { ExternalLinkProvider } from '../../../providers/external-link/external-link';
@@ -29,6 +30,7 @@ import {
 
 // Pages
 import { CopayersPage } from '../../add/copayers/copayers';
+import { CreateEthMultisigPage } from '../../add/create-eth-multisig/create-eth-multisig';
 import { KeyOnboardingPage } from '../../settings/key-settings/key-onboarding/key-onboarding';
 import { WalletDetailsPage } from '../../wallet-details/wallet-details';
 @Component({
@@ -56,21 +58,27 @@ export class CreateWalletPage implements OnInit {
   private tc: number;
   private derivationPathByDefault: string;
   private derivationPathForTestnet: string;
-  private keyId: string;
   private showKeyOnboarding: boolean;
 
+  public keyId: string;
   public copayers: number[];
   public signatures: number[];
   public showAdvOpts: boolean;
   public seedOptions;
   public isShared: boolean;
-  public coin: Coin;
+  public coin: string;
   public coinName: string;
   public okText: string;
   public cancelText: string;
   public createForm: FormGroup;
 
+  public multisigAddresses: string[];
+  public invalidAddress: boolean;
+  public pairedWallet: any;
+  public isOpenSelector: boolean;
+
   constructor(
+    private actionSheetProvider: ActionSheetProvider,
     private currencyProvider: CurrencyProvider,
     private navCtrl: NavController,
     private navParams: NavParams,
@@ -82,14 +90,14 @@ export class CreateWalletPage implements OnInit {
     private logger: Logger,
     private walletProvider: WalletProvider,
     private translate: TranslateService,
+    private events: Events,
     private pushNotificationsProvider: PushNotificationsProvider,
     private externalLinkProvider: ExternalLinkProvider,
     private bwcErrorProvider: BwcErrorProvider,
     private bwcProvider: BwcProvider,
     private modalCtrl: ModalController,
     private persistenceProvider: PersistenceProvider,
-    private errorsProvider: ErrorsProvider,
-    private events: Events
+    private errorsProvider: ErrorsProvider
   ) {
     this.okText = this.translate.instant('Ok');
     this.cancelText = this.translate.instant('Cancel');
@@ -98,18 +106,17 @@ export class CreateWalletPage implements OnInit {
     this.coinName = this.currencyProvider.getCoinName(this.coin);
     this.keyId = this.navParams.get('keyId');
     this.defaults = this.configProvider.getDefaults();
+    this.multisigAddresses = [];
     this.tc = this.isShared ? this.defaults.wallet.totalCopayers : 1;
     this.copayers = _.range(2, this.defaults.limits.totalCopayers + 1);
-    this.derivationPathByDefault = this.isShared
-      ? this.coin === 'bch'
-        ? this.derivationPathHelperProvider.defaultMultisigBCH
-        : this.derivationPathHelperProvider.defaultMultisigBTC
-      : this.bwcProvider.getCore().Deriver.pathFor(this.coin, 'livenet');
+    this.derivationPathByDefault = this.getDerivationPathByDefault();
     this.derivationPathForTestnet = this.bwcProvider
       .getCore()
       .Deriver.pathFor(this.coin, 'testnet');
     this.showAdvOpts = false;
-    const walletName = this.currencyProvider.getCoinName(this.coin);
+    const walletName =
+      this.currencyProvider.getCoinName(this.coin) +
+      (this.isShared ? ' Multisig' : '');
     this.createForm = this.fb.group({
       walletName: [walletName, Validators.required],
       myName: [null],
@@ -125,6 +132,8 @@ export class CreateWalletPage implements OnInit {
       coin: [null, Validators.required]
     });
     this.createForm.controls['coin'].setValue(this.coin);
+    if (this.coin === 'btc' || this.coin === 'ltc')
+      this.createForm.controls['useNativeSegwit'].setValue(true);
     this.showKeyOnboarding = this.navParams.data.showKeyOnboarding;
 
     this.setTotalCopayers(this.tc);
@@ -134,7 +143,11 @@ export class CreateWalletPage implements OnInit {
 
   ngOnInit() {
     if (this.isShared) {
-      this.createForm.get('myName').setValidators([Validators.required]);
+      if (this.coin.toLowerCase() == 'eth') {
+        this.showPairedWalletSelector();
+      } else {
+        this.createForm.get('myName').setValidators([Validators.required]);
+      }
     }
   }
 
@@ -335,9 +348,13 @@ export class CreateWalletPage implements OnInit {
           this.events.publish('Local/FetchWallets');
           setTimeout(() => {
             if (wallet.isComplete()) {
-              this.navCtrl.push(WalletDetailsPage, {
-                walletId: wallet.credentials.walletId
-              });
+              if (this.navParams.get('fromCoinAndWalletSelector')) {
+                this.navCtrl.pop();
+              } else {
+                this.navCtrl.push(WalletDetailsPage, {
+                  walletId: wallet.credentials.walletId
+                });
+              }
             } else {
               const copayerModal = this.modalCtrl.create(
                 CopayersPage,
@@ -405,5 +422,76 @@ export class CreateWalletPage implements OnInit {
         }
         break;
     }
+  }
+
+  public showPairedWalletSelector() {
+    this.isOpenSelector = true;
+    const eligibleWallets = this.keyId
+      ? this.profileProvider.getWalletsFromGroup({
+          keyId: this.keyId,
+          hasFunds: true,
+          coin: 'eth',
+          m: 1,
+          n: 1
+        })
+      : [];
+
+    const walletSelector = this.actionSheetProvider.createInfoSheet(
+      'linkEthWallet',
+      {
+        wallets: eligibleWallets,
+        isEthMultisig: true
+      }
+    );
+    walletSelector.present();
+    walletSelector.onDidDismiss(pairedWallet => {
+      this.isOpenSelector = false;
+      if (!_.isEmpty(pairedWallet)) {
+        this.pairedWallet = pairedWallet;
+        this.createForm.controls['testnetEnabled'].setValue(
+          this.pairedWallet.network == 'testnet' ? true : false
+        );
+      }
+    });
+  }
+
+  public goToCreateEthMultisig() {
+    this.navCtrl.push(CreateEthMultisigPage, {
+      pairedWallet: this.pairedWallet,
+      m: this.createForm.value.requiredCopayers,
+      n: this.createForm.value.totalCopayers,
+      testnetEnabled: this.createForm.value.testnetEnabled,
+      walletName: this.createForm.value.walletName
+    });
+  }
+
+  private getDerivationPathByDefault(): string {
+    let derivationPathByDefault: string;
+
+    if (!this.isShared) {
+      derivationPathByDefault = this.bwcProvider
+        .getCore()
+        .Deriver.pathFor(this.coin, 'livenet');
+    } else {
+      switch (this.coin) {
+        case 'bch':
+          derivationPathByDefault = this.derivationPathHelperProvider
+            .defaultMultisigBCH;
+          break;
+        case 'doge':
+          derivationPathByDefault = this.derivationPathHelperProvider
+            .defaultMultisigDOGE;
+          break;
+        case 'ltc':
+          derivationPathByDefault = this.derivationPathHelperProvider
+            .defaultMultisigLTC;
+          break;
+        default:
+          derivationPathByDefault = this.derivationPathHelperProvider
+            .defaultMultisigBTC;
+      }
+    }
+
+    return derivationPathByDefault;
   }
 }

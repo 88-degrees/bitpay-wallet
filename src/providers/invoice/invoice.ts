@@ -4,6 +4,8 @@ import { EmailNotificationsProvider } from '../email-notifications/email-notific
 import { Logger } from '../logger/logger';
 import { Network, PersistenceProvider } from '../persistence/persistence';
 
+declare var cordova: any;
+
 @Injectable()
 export class InvoiceProvider {
   credentials: {
@@ -21,17 +23,19 @@ export class InvoiceProvider {
     public persistenceProvider: PersistenceProvider
   ) {
     this.logger.debug('InvoiceProvider initialized');
-    this.setCredentials();
   }
 
-  getNetwork() {
+  public setNetwork(network: string) {
+    this.credentials.NETWORK = Network[network];
+    this.credentials.BITPAY_API_URL =
+      network === Network.livenet
+        ? 'https://bitpay.com'
+        : 'https://test.bitpay.com';
+    this.logger.log(`invoice provider initialized with ${network}`);
+  }
+
+  public getNetwork() {
     return this.credentials.NETWORK;
-  }
-
-  setCredentials() {
-    if (this.getNetwork() === Network.testnet) {
-      this.credentials.BITPAY_API_URL = 'https://test.bitpay.com';
-    }
   }
 
   getApiPath() {
@@ -63,5 +67,28 @@ export class InvoiceProvider {
 
   private setUserInfo(data: any): void {
     this.persistenceProvider.setGiftCardUserInfo(JSON.stringify(data));
+  }
+
+  public async getInvoiceData(id: string) {
+    return new Promise<any>((response, reject) => {
+      cordova.plugin.http.sendRequest(
+        `${this.credentials.BITPAY_API_URL}/invoiceData/${id}`,
+        {
+          method: 'get'
+        },
+        res => {
+          this.logger.debug('Get InvoiceData: Success');
+          return response(res);
+        },
+        ({ error }) => {
+          this.logger.error('Get InvoiceData: ERROR ' + error);
+          return reject(error);
+        }
+      );
+    });
+  }
+
+  public async canGetInvoiceData(id: string) {
+    return !!(await this.getInvoiceData(id).catch(() => false));
   }
 }

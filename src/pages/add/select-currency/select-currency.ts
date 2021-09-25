@@ -10,8 +10,11 @@ import * as _ from 'lodash';
 
 // pages
 import { ImportWalletPage } from '../../add/import-wallet/import-wallet';
+import { RecoveryKeyPage } from '../../onboarding/recovery-key/recovery-key';
 import { KeyOnboardingPage } from '../../settings/key-settings/key-onboarding/key-onboarding';
 import { CreateWalletPage } from '../create-wallet/create-wallet';
+import { CustomTokenPage } from '../custom-token/custom-token';
+import { JoinWalletPage } from '../join-wallet/join-wallet';
 
 // providers
 import {
@@ -26,7 +29,6 @@ import {
   WalletProvider
 } from '../../../providers';
 import {
-  Coin,
   CoinsMap,
   CurrencyProvider
 } from '../../../providers/currency/currency';
@@ -40,7 +42,7 @@ export class SelectCurrencyPage {
   private showKeyOnboarding: boolean;
 
   public title: string;
-  public coin: Coin;
+  public coin: string;
   public coinsSelected = {} as CoinsMap<boolean>;
   public tokensSelected = {} as CoinsMap<boolean>;
   public tokenDisabled = {} as CoinsMap<boolean>;
@@ -49,13 +51,16 @@ export class SelectCurrencyPage {
   public availableTokens: Token[];
   public isOnboardingFlow: boolean;
   public isZeroState: boolean;
+  public isJoin: boolean;
+  public isShared: boolean;
+  public keyId;
 
   constructor(
     private actionSheetProvider: ActionSheetProvider,
     private currencyProvider: CurrencyProvider,
     private navCtrl: NavController,
     private logger: Logger,
-    private navParam: NavParams,
+    public navParam: NavParams,
     private profileProvider: ProfileProvider,
     private onGoingProcessProvider: OnGoingProcessProvider,
     private walletProvider: WalletProvider,
@@ -67,15 +72,26 @@ export class SelectCurrencyPage {
     private errorsProvider: ErrorsProvider,
     private events: Events
   ) {
-    this.availableChains = this.navParam.data.isShared
-      ? this.currencyProvider.getMultiSigCoins()
-      : this.currencyProvider.getAvailableChains();
-    this.availableTokens = this.currencyProvider.getAvailableTokens();
+    this.isJoin = this.navParam.data.isJoin;
+    this.isShared = this.navParam.data.isShared;
+    this.keyId = this.navParam.data.keyId;
+    this.availableChains =
+      this.isShared || this.isJoin
+        ? this.currencyProvider.getMultiSigCoins()
+        : this.currencyProvider.getAvailableChains();
+    this.availableTokens = this.currencyProvider.getBitPayPaymentsAvailableCoins();
     for (const chain of this.availableChains) {
       this.coinsSelected[chain] = true;
     }
     this.shouldShowKeyOnboarding();
     this.setTokens();
+  }
+
+  ionViewWillEnter() {
+    const previousView = this.navCtrl.getPrevious();
+    if (this.isOnboardingFlow && previousView.name === 'LockMethodPage') {
+      this.navCtrl.removeView(previousView);
+    }
   }
 
   ionViewDidLoad() {
@@ -102,7 +118,7 @@ export class SelectCurrencyPage {
     });
   }
 
-  private showKeyOnboardingSlides(coins: Coin[]) {
+  private showKeyOnboardingSlides(coins: string[]) {
     this.logger.debug('Showing key onboarding');
     const modal = this.modalCtrl.create(KeyOnboardingPage, null, {
       showBackdrop: false,
@@ -116,15 +132,23 @@ export class SelectCurrencyPage {
   }
 
   public goToCreateWallet(coin: string): void {
-    this.navCtrl.push(CreateWalletPage, {
-      isShared: this.navParam.data.isShared,
-      coin,
-      keyId: this.navParam.data.keyId,
-      showKeyOnboarding: this.showKeyOnboarding
-    });
+    if (this.isJoin) {
+      this.navCtrl.push(JoinWalletPage, {
+        keyId: this.keyId,
+        url: this.navParam.data.url,
+        coin
+      });
+    } else {
+      this.navCtrl.push(CreateWalletPage, {
+        isShared: this.isShared,
+        coin,
+        keyId: this.keyId,
+        showKeyOnboarding: this.showKeyOnboarding
+      });
+    }
   }
 
-  public getCoinName(coin: Coin): string {
+  public getCoinName(coin: string): string {
     return this.currencyProvider.getCoinName(coin);
   }
 
@@ -132,8 +156,8 @@ export class SelectCurrencyPage {
     this.navCtrl.push(ImportWalletPage);
   }
 
-  private _createWallets(coins: Coin[]): void {
-    const selectedCoins = _.keys(_.pickBy(this.coinsSelected)) as Coin[];
+  private _createWallets(coins: string[]): void {
+    const selectedCoins = _.keys(_.pickBy(this.coinsSelected));
     coins = coins || selectedCoins;
     const selectedTokens = _.keys(_.pickBy(this.tokensSelected));
     this.onGoingProcessProvider.set('creatingWallet');
@@ -146,18 +170,15 @@ export class SelectCurrencyPage {
         this.profileProvider.setNewWalletGroupOrder(
           wallets[0].credentials.keyId
         );
-        this.endProcess();
+        this.endProcess(wallets[0].credentials.keyId);
       })
       .catch(e => {
         this.showError(e);
       });
   }
 
-  public createWallets(coins: Coin[]): void {
-    if (this.showKeyOnboarding) {
-      this.showKeyOnboardingSlides(coins);
-      return;
-    } else if (this.isZeroState) {
+  public createWallets(coins: string[]): void {
+    if (this.isZeroState && !this.isOnboardingFlow) {
       this.showInfoSheet(coins);
       return;
     }
@@ -172,10 +193,12 @@ export class SelectCurrencyPage {
     this.errorsProvider.showDefaultError(err, title);
   }
 
-  private endProcess() {
+  private endProcess(keyId?: string) {
     this.onGoingProcessProvider.clear();
-    this.navCtrl.popToRoot().then(() => {
-      this.events.publish('Local/FetchWallets');
+    this.navCtrl.push(RecoveryKeyPage, {
+      keyId,
+      isOnboardingFlow: this.isOnboardingFlow,
+      hideBackButton: true
     });
   }
 
@@ -184,22 +207,28 @@ export class SelectCurrencyPage {
       this.profileProvider.createTokenWallet(pairedWallet, token).then(() => {
         // store preferences for the paired eth wallet
         this.walletProvider.updateRemotePreferences(pairedWallet);
-        this.endProcess();
+        if (pairedWallet.needsBackup) {
+          this.endProcess();
+        } else {
+          this.navCtrl.popToRoot().then(() => {
+            this.events.publish('Local/FetchWallets');
+          });
+        }
       });
     }
   }
 
   public showPairedWalletSelector(token) {
-    const eligibleWallets = this.navParam.data.keyId
+    const eligibleWallets = this.keyId
       ? this.profileProvider.getWalletsFromGroup({
-          keyId: this.navParam.data.keyId,
+          keyId: this.keyId,
           network: 'livenet',
           pairFor: token
         })
       : [];
 
     const walletSelector = this.actionSheetProvider.createInfoSheet(
-      'addTokenWallet',
+      'linkEthWallet',
       {
         wallets: eligibleWallets,
         token
@@ -210,6 +239,7 @@ export class SelectCurrencyPage {
       return this.createAndBindTokenWallet(pairedWallet, token);
     });
   }
+
   public setTokens(coin?: string): void {
     if (coin === 'eth' || !coin) {
       for (const token of this.availableTokens) {
@@ -218,7 +248,7 @@ export class SelectCurrencyPage {
         } else {
           let canCreateit = _.isEmpty(
             this.profileProvider.getWalletsFromGroup({
-              keyId: this.navParam.data.keyId,
+              keyId: this.keyId,
               network: 'livenet',
               pairFor: token
             })
@@ -229,7 +259,7 @@ export class SelectCurrencyPage {
     }
   }
 
-  private showInfoSheet(coins: Coin[]) {
+  private showInfoSheet(coins: string[]) {
     const infoSheet = this.actionSheetProvider.createInfoSheet('new-key');
     infoSheet.present();
     infoSheet.onDidDismiss(option => {
@@ -238,6 +268,12 @@ export class SelectCurrencyPage {
         return;
       }
       this._createWallets(coins);
+    });
+  }
+
+  public goToCustomToken() {
+    this.navCtrl.push(CustomTokenPage, {
+      keyId: this.keyId
     });
   }
 }

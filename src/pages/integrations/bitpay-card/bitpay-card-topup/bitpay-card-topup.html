@@ -9,7 +9,13 @@
     <div class="bitpay-title">
       <ng-container *ngIf="brand === 'Mastercard' else visa">
         <img src="assets/img/bitpay-card/bitpay-card-mc.svg">
-        <span>BitPay Card ({{lastFourDigits}})</span>
+        <span>BitPay Card</span>
+        <ion-note>
+          <span translate>Virtual</span>
+        </ion-note>
+        <ion-note>
+          <span translate>Physical</span>
+        </ion-note>
       </ng-container>
       <ng-template #visa>
         <img src="assets/img/bitpay-card/bitpay-card-visa.svg">
@@ -55,7 +61,19 @@
           </ion-col>
         </ion-row>
 
-        <ion-row align-items-center class="wallet" *ngIf="!wallet">
+        <ion-row align-items-center class="wallet" *ngIf="coinbaseAccount">
+          <ion-col>
+            <ion-icon item-start>
+              <img src="assets/img/coinbase/coinbase-icon.png" width="32">
+            </ion-icon>
+          </ion-col>
+
+          <ion-col>
+            <span class="note-container ellipsis">{{coinbaseAccount.name}}</span>
+          </ion-col>
+        </ion-row>
+
+        <ion-row align-items-center class="wallet" *ngIf="!wallet && !coinbaseAccount">
           <div translate>Select a wallet</div>
           <div class="last-item" item-end>
             <button ion-button clear color="grey" icon-only>
@@ -93,9 +111,9 @@
       </ion-note>
     </ion-item>
 
-    <div *ngIf="invoiceFee" class="line-divider"></div>
+    <div *ngIf="invoiceFee && !coinbaseAccount" class="line-divider"></div>
 
-    <ion-item *ngIf="invoiceFee">
+    <ion-item *ngIf="invoiceFee && !coinbaseAccount">
       <ion-label>
         <div class="summary-item">
           <span translate>Network cost</span>
@@ -109,9 +127,9 @@
       </ion-note>
     </ion-item>
 
-    <div class="line-divider"></div>
+    <div class="line-divider" *ngIf="!coinbaseAccount"></div>
 
-    <ion-item>
+    <ion-item *ngIf="networkFee && !coinbaseAccount">
       <ion-label>
         <div class="summary-item">
           <span translate>Miner fee</span>
@@ -127,7 +145,7 @@
 
     <div class="summary-line"></div>
 
-    <ion-item>
+    <ion-item *ngIf="totalAmountStr">
       <ion-label>
         <div class="main-label total-label">TOTAL</div>
       </ion-label>
@@ -138,7 +156,7 @@
         </div>
       </ion-note>
     </ion-item>
-    <div *ngIf="totalAmount && !isERCToken" class="amount-details">
+    <div *ngIf="totalAmountStr && totalAmount && !isERCToken" class="amount-details">
       <div class="secondary-note">
         {{totalAmount | number:'1.2-2'}} {{currencyIsoCode}}
       </div>
@@ -152,9 +170,9 @@
 </ion-content>
 
 <ion-footer>
-  <page-slide-to-accept #slideButton *ngIf="isCordova" [disabled]="!(wallet && totalAmountStr) || paymentExpired" buttonText="{{'Slide to confirm' | translate}}" (slideDone)="topUpConfirm()"></page-slide-to-accept>
+  <page-slide-to-accept #slideButton *ngIf="isCordova" [disabled]="!((wallet || coinbaseAccount) && totalAmountStr) || paymentExpired" buttonText="{{'Slide to confirm' | translate}}" [isDogecoin]="wallet && wallet.coin == 'doge'" (slideDone)="topUpConfirm()"></page-slide-to-accept>
   <ion-toolbar *ngIf="!isCordova">
-    <button ion-button full class="button-footer" (click)="topUpConfirm()" [disabled]="!(wallet && totalAmountStr) || paymentExpired">
+    <button ion-button full class="button-footer" (click)="topUpConfirm()" [disabled]="!((wallet || coinbaseAccount) && totalAmountStr) || paymentExpired">
       {{'Add funds' | translate}}
     </button>
   </ion-toolbar>

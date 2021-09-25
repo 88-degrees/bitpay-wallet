@@ -1,36 +1,41 @@
-import { Component, Input } from '@angular/core';
-import * as _ from 'lodash';
+import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { TranslateService } from '@ngx-translate/core';
 
 // Providers
 import { AddressBookProvider } from '../../../providers/address-book/address-book';
 import { AddressProvider } from '../../../providers/address/address';
-import { Coin } from '../../../providers/currency/currency';
-import { Logger } from '../../../providers/logger/logger';
+import { CurrencyProvider } from '../../../providers/currency/currency';
 import { WalletProvider } from '../../../providers/wallet/wallet';
-
 @Component({
   selector: 'page-multiple-outputs',
   templateUrl: 'multiple-outputs.html'
 })
 export class MultipleOutputsPage {
-  public coin: Coin;
+  public coin: string;
   private _tx;
+  private _misunderstoodOutputsMsg;
 
-  public contactName: string;
   public showMultiplesOutputs: boolean;
 
   constructor(
     private addressBookProvider: AddressBookProvider,
     private addressProvider: AddressProvider,
-    private logger: Logger,
-    private walletProvider: WalletProvider
+    private translate: TranslateService,
+    private walletProvider: WalletProvider,
+    public currencyProvider: CurrencyProvider
   ) {
     this.showMultiplesOutputs = false;
   }
 
+  @Output() openBlockChainEvent = new EventEmitter<string>();
   @Input()
   set tx(tx) {
     this._tx = tx;
+    this._misunderstoodOutputsMsg = tx.misunderstoodOutputs
+      ? this.translate.instant(
+          'There are some misunderstood outputs, please view on blockchain.'
+        )
+      : undefined;
     this.tx.outputs.forEach(output => {
       const outputAddr = output.toAddress ? output.toAddress : output.address;
       this.coin = this._tx.coin
@@ -45,27 +50,23 @@ export class MultipleOutputsPage {
       );
       output.addressToShow =
         addressToShow == 'false' ? 'Unparsed address' : addressToShow;
+      this.addressBookProvider
+        .getContactName(outputAddr, this.tx.network)
+        .then(contact => {
+          output.contactName = contact;
+        });
     });
-
-    this.contact();
   }
 
   get tx() {
     return this._tx;
   }
 
-  private contact(): void {
-    const addr = this._tx.toAddress;
-    this.addressBookProvider
-      .get(addr)
-      .then(ab => {
-        if (ab) {
-          const name = _.isObject(ab) ? ab.name : ab;
-          this.contactName = name;
-        }
-      })
-      .catch(err => {
-        this.logger.warn(err);
-      });
+  get misunderstoodOutputsMsg() {
+    return this._misunderstoodOutputsMsg;
+  }
+
+  viewOnBlockchain(): void {
+    this.openBlockChainEvent.next();
   }
 }

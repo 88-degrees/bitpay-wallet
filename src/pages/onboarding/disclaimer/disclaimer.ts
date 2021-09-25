@@ -1,39 +1,43 @@
-import { Component, ViewChild } from '@angular/core';
+import { Component } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
-import { NavController, Slides } from 'ionic-angular';
-import { Logger } from '../../../providers/logger/logger';
+import { Events, NavController, Platform } from 'ionic-angular';
 
-import { TabsPage } from '../../tabs/tabs';
-
-import { EmailNotificationsProvider } from '../../../providers/email-notifications/email-notifications';
+// Providers
+import { AppProvider } from '../../../providers/app/app';
 import { ExternalLinkProvider } from '../../../providers/external-link/external-link';
+import { IABCardProvider } from '../../../providers/in-app-browser/card';
+import { Logger } from '../../../providers/logger/logger';
 import { PersistenceProvider } from '../../../providers/persistence/persistence';
+
+// Pages
+import { TabsPage } from '../../../pages/tabs/tabs';
 
 @Component({
   selector: 'page-disclaimer',
   templateUrl: 'disclaimer.html'
 })
 export class DisclaimerPage {
-  @ViewChild('walletGroupOnboardingSlides')
-  walletGroupOnboardingSlides: Slides;
-
+  private unregisterBackButtonAction;
   public accepted;
   public terms;
-  public hasEmail: boolean;
+  public appName: string;
 
   constructor(
     public navCtrl: NavController,
     private logger: Logger,
-    private emailProvider: EmailNotificationsProvider,
     private externalLinkProvider: ExternalLinkProvider,
     private persistenceProvider: PersistenceProvider,
-    private translate: TranslateService
+    private translate: TranslateService,
+    private iabCardProvider: IABCardProvider,
+    private events: Events,
+    private platform: Platform,
+    private appProvider: AppProvider
   ) {
-    this.hasEmail = this.emailProvider.getEmailIfEnabled() ? true : false;
+    this.appName = this.appProvider.info.nameCase;
+
     this.accepted = {
       first: false,
-      second: false,
-      third: this.hasEmail ? false : true
+      second: false
     };
     this.terms = {
       accepted: false
@@ -42,27 +46,10 @@ export class DisclaimerPage {
 
   ionViewDidLoad() {
     this.logger.info('Loaded: DisclaimerPage');
+    this.initializeBackButtonHandler();
   }
-
-  ionViewWillLoad() {
-    this.walletGroupOnboardingSlides.lockSwipeToPrev(true);
-  }
-
-  public slideChanged() {
-    // Disable first and last slides bounce
-    let currentIndex = this.walletGroupOnboardingSlides.getActiveIndex();
-    if (currentIndex == 0)
-      this.walletGroupOnboardingSlides.lockSwipeToPrev(true);
-    if (currentIndex > 0)
-      this.walletGroupOnboardingSlides.lockSwipeToPrev(false);
-    if (currentIndex >= 3)
-      this.walletGroupOnboardingSlides.lockSwipeToNext(true);
-    if (currentIndex < 3)
-      this.walletGroupOnboardingSlides.lockSwipeToNext(false);
-  }
-
-  public nextSlide(): void {
-    this.walletGroupOnboardingSlides.slideNext();
+  ionViewWillLeave() {
+    this.unregisterBackButtonAction && this.unregisterBackButtonAction();
   }
 
   selectTerms() {
@@ -70,7 +57,7 @@ export class DisclaimerPage {
   }
 
   openDisclaimer() {
-    let url = 'https://bitpay.com/about/terms#wallet';
+    let url = 'https://bitpay.com/legal/terms-of-use/#wallet-terms-of-use';
     let optIn = true;
     let title = null;
     let message = this.translate.instant('View Wallet Terms of Use');
@@ -86,28 +73,40 @@ export class DisclaimerPage {
     );
   }
 
-  openPrivacyPolicy() {
-    let url = 'https://bitpay.com/about/privacy';
-    let optIn = true;
-    let title = null;
-    let message = this.translate.instant('View Privacy Policy');
-    let okText = this.translate.instant('Open');
-    let cancelText = this.translate.instant('Go Back');
-    this.externalLinkProvider.open(
-      url,
-      optIn,
-      title,
-      message,
-      okText,
-      cancelText
+  confirm() {
+    this.persistenceProvider.setEmailLawCompliance('accepted');
+    this.persistenceProvider.setDisclaimerAccepted();
+    this.persistenceProvider.setOnboardingFlowFlag('enabled');
+    this.persistenceProvider.getCardFastTrackEnabled().then(context => {
+      if (context) {
+        setTimeout(() => {
+          this.iabCardProvider.show();
+          this.iabCardProvider.sendMessage({
+            message: 'debitCardOrder',
+            payload: context
+          });
+        }, 200);
+        this.persistenceProvider.setCardExperimentFlag('enabled');
+        setTimeout(() => {
+          this.events.publish('experimentUpdateStart');
+          setTimeout(() => {
+            this.events.publish('experimentUpdateComplete');
+          }, 300);
+        }, 400);
+      }
+    });
+    this.navCtrl.setRoot(TabsPage).then(_ => {
+      this.navCtrl.popToRoot();
+    });
+  }
+
+  private initializeBackButtonHandler(): void {
+    this.unregisterBackButtonAction = this.platform.registerBackButtonAction(
+      () => {}
     );
   }
 
-  confirm() {
-    this.persistenceProvider.setEmailLawCompliance('accepted');
-    this.persistenceProvider.setNewDesignSlidesFlag('completed');
-    this.persistenceProvider.setDisclaimerAccepted();
-    this.navCtrl.setRoot(TabsPage);
-    this.navCtrl.popToRoot({ animate: false });
+  public acceptTerm(term) {
+    this.accepted[term] = !this.accepted[term];
   }
 }

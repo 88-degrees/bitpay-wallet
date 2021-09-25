@@ -134,7 +134,7 @@ export class WalletTransactionHistoryPage {
           _comment = it.note ? it.note.body : '';
 
           if (it.action == 'moved')
-            _note += ' Moved:' + (it.amount * this.satToUnit).toFixed(8);
+            _note += ' Sent to self:' + (it.amount * this.satToUnit).toFixed(8);
 
           this.csvContent.push({
             Date: this.formatDate(it.time * 1000),
@@ -150,12 +150,15 @@ export class WalletTransactionHistoryPage {
 
           if (it.fees && (it.action == 'moved' || it.action == 'sent')) {
             const _fee = (it.fees * this.satToUnit).toFixed(8);
+            const _chainCoin = this.currencyProvider.getChain(
+              this.wallet.coin.toLowerCase()
+            );
             this.csvContent.push({
               Date: this.formatDate(it.time * 1000),
-              Destination: 'Bitcoin Network Fees',
+              Destination: `${_chainCoin} Network Fees`,
               Description: '',
               Amount: '-' + _fee,
-              Currency: this.currency,
+              Currency: _chainCoin,
               Txid: '',
               Creator: '',
               Copayers: ''

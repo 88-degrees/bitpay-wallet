@@ -46,7 +46,8 @@
     }
   }
 
-  ion-icon.item-img.icon {
+  ion-icon.item-img.icon,
+  ion-note ion-icon.item-img.icon {
     &.icon-md.item-icon,
     &.icon-ios.item-icon {
       margin: 9px 15px 9px 0;
@@ -86,6 +87,18 @@
         }
         &_busd {
           background-color: #f3ba2d;
+        }
+        &_dai {
+          background-color: #ff9e2f;
+        }
+        &_wbtc {
+          background-color: #000000;
+        }
+        &_doge {
+          background-color: #d8c172;
+        }
+        &_ltc {
+          background-color: #a6a9aa;
         }
       }
     }
@@ -131,8 +144,7 @@
 
   .secondary-label {
     font-size: 14px;
-    color: #565d6d;
-    opacity: 50%;
+    color: #828991;
     font-weight: 400;
   }
 
@@ -179,9 +191,15 @@
   }
 
   .main-label.total-label {
-    color: #9ba3ae;
+    display: flex;
+    color: #000000;
     font-size: 16px;
     font-weight: 500;
+  }
+  .subtotal-label {
+    .title {
+      opacity: 0.5;
+    }
   }
   .total-amount {
     color: #000000;
@@ -190,8 +208,21 @@
     line-height: 30px;
     text-align: right;
   }
+  .subtotal-amount {
+    opacity: 0.5;
+  }
   .amount-details {
     padding-right: 19px;
+  }
+  .total-amount-note {
+    color: #000000;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 25px;
+    text-align: end;
+  }
+  .subtotal-amount-note {
+    opacity: 50%;
   }
   coin-icon {
     margin: 0px !important;

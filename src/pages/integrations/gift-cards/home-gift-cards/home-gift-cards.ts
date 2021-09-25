@@ -12,7 +12,9 @@ import { debounceTime } from 'rxjs/operators';
 import {
   ActionSheetProvider,
   AppProvider,
-  PersistenceProvider
+  ExternalLinkProvider,
+  PersistenceProvider,
+  PlatformProvider
 } from '../../../../providers';
 import {
   GiftCardProvider,
@@ -79,9 +81,11 @@ export class HomeGiftCards implements OnInit {
   constructor(
     private actionSheetProvider: ActionSheetProvider,
     private appProvider: AppProvider,
+    private externalLinkProvider: ExternalLinkProvider,
     private giftCardProvider: GiftCardProvider,
     private navCtrl: NavController,
-    private persistenceProvider: PersistenceProvider
+    private persistenceProvider: PersistenceProvider,
+    public platformProvider: PlatformProvider
   ) {}
 
   async ngOnInit() {
@@ -110,6 +114,12 @@ export class HomeGiftCards implements OnInit {
     event.action === 'view'
       ? this.viewGiftCards(event.cardName, purchasedCards)
       : this.showArchiveSheet(event);
+  }
+
+  public launchExtension() {
+    this.externalLinkProvider.open(
+      'https://bitpay.com/extension/?launchExtension=true'
+    );
   }
 
   private async viewGiftCards(cardName: string, cards: GiftCard[]) {
@@ -201,14 +211,11 @@ export class HomeGiftCards implements OnInit {
 
   private groupCardsByBrand(cards: GiftCard[]): GiftCard[][] {
     return cards
-      .reduce(
-        (brands, c) => {
-          const brandCards = brands.find(b => b[0].name === c.name);
-          brandCards ? brandCards.push(c) : brands.push([c]);
-          return brands;
-        },
-        [] as GiftCard[][]
-      )
+      .reduce((brands, c) => {
+        const brandCards = brands.find(b => b[0].name === c.name);
+        brandCards ? brandCards.push(c) : brands.push([c]);
+        return brands;
+      }, [] as GiftCard[][])
       .sort((a, b) => sortByDisplayName(a[0], b[0]));
   }
 }

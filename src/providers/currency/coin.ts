@@ -5,7 +5,8 @@ export interface CoinOpts {
   name: string;
   chain: string;
   coin: string;
-  unitInfo: {
+  logoURI?: string;
+  unitInfo?: {
     // Config/Precision
     unitName: string;
     unitToSatoshi: number;
@@ -20,6 +21,7 @@ export interface CoinOpts {
     isERCToken: boolean;
     isStableCoin: boolean;
     singleAddress: boolean;
+    isCustom?: boolean;
   };
   paymentInfo: {
     paymentCode: string;
@@ -27,6 +29,7 @@ export interface CoinOpts {
     // Urls
     ratesApi: string;
     blockExplorerUrls: string;
+    blockExplorerUrlsTestnet: string;
   };
   feeInfo: {
     // Fee Units
@@ -36,6 +39,7 @@ export interface CoinOpts {
     maxMerchantFee: string;
   };
   theme: {
+    coinColor: string;
     backgroundColor: string;
     gradientBackgroundColor: string;
   };
@@ -63,8 +67,9 @@ export const availableCoins: CoinsMap<CoinOpts> = {
     paymentInfo: {
       paymentCode: 'BIP73',
       protocolPrefix: { livenet: 'bitcoin', testnet: 'bitcoin' },
-      ratesApi: 'https://bitpay.com/api/rates',
-      blockExplorerUrls: 'bitpay.com/insight/#/BTC/'
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/btc',
+      blockExplorerUrls: 'bitpay.com/insight/#/BTC/mainnet/',
+      blockExplorerUrlsTestnet: 'bitpay.com/insight/#/BTC/testnet/'
     },
     feeInfo: {
       feeUnit: 'sat/byte',
@@ -73,6 +78,7 @@ export const availableCoins: CoinsMap<CoinOpts> = {
       maxMerchantFee: 'urgent'
     },
     theme: {
+      coinColor: '#f7931a',
       backgroundColor: '#f7921a',
       gradientBackgroundColor: '#f7921a'
     }
@@ -98,8 +104,9 @@ export const availableCoins: CoinsMap<CoinOpts> = {
     paymentInfo: {
       paymentCode: 'BIP73',
       protocolPrefix: { livenet: 'bitcoincash', testnet: 'bchtest' },
-      ratesApi: 'https://bitpay.com/api/rates/bch',
-      blockExplorerUrls: 'bitpay.com/insight/#/BCH/'
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/bch',
+      blockExplorerUrls: 'bitpay.com/insight/#/BCH/mainnet/',
+      blockExplorerUrlsTestnet: 'bitpay.com/insight/#/BCH/testnet/'
     },
     feeInfo: {
       feeUnit: 'sat/byte',
@@ -108,6 +115,7 @@ export const availableCoins: CoinsMap<CoinOpts> = {
       maxMerchantFee: 'normal'
     },
     theme: {
+      coinColor: '#2fcf6e',
       backgroundColor: '#2fcf6e',
       gradientBackgroundColor: '#2fcf6e'
     }
@@ -123,7 +131,7 @@ export const availableCoins: CoinsMap<CoinOpts> = {
       unitCode: 'eth'
     },
     properties: {
-      hasMultiSig: false,
+      hasMultiSig: true,
       hasMultiSend: false,
       isUtxo: false,
       isERCToken: false,
@@ -133,8 +141,9 @@ export const availableCoins: CoinsMap<CoinOpts> = {
     paymentInfo: {
       paymentCode: 'EIP681',
       protocolPrefix: { livenet: 'ethereum', testnet: 'ethereum' },
-      ratesApi: 'https://bitpay.com/api/rates/eth',
-      blockExplorerUrls: 'bitpay.com/insight/#/ETH/'
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/eth',
+      blockExplorerUrls: 'etherscan.io/',
+      blockExplorerUrlsTestnet: 'kovan.etherscan.io/'
     },
     feeInfo: {
       feeUnit: 'Gwei',
@@ -143,6 +152,7 @@ export const availableCoins: CoinsMap<CoinOpts> = {
       maxMerchantFee: 'urgent'
     },
     theme: {
+      coinColor: '#6b71d6',
       backgroundColor: '#1e90ff',
       gradientBackgroundColor: '#1e90ff'
     }
@@ -168,8 +178,9 @@ export const availableCoins: CoinsMap<CoinOpts> = {
     paymentInfo: {
       paymentCode: 'BIP73',
       protocolPrefix: { livenet: 'ripple', testnet: 'ripple' },
-      ratesApi: 'https://bitpay.com/api/rates/xrp',
-      blockExplorerUrls: 'xrpscan.com/'
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/xrp',
+      blockExplorerUrls: 'xrpscan.com/',
+      blockExplorerUrlsTestnet: 'test.bithomp.com/explorer/'
     },
     feeInfo: {
       feeUnit: 'drops',
@@ -178,6 +189,7 @@ export const availableCoins: CoinsMap<CoinOpts> = {
       maxMerchantFee: 'normal'
     },
     theme: {
+      coinColor: '#000000',
       backgroundColor: '#565d6d',
       gradientBackgroundColor: '#565d6d'
     }
@@ -203,8 +215,9 @@ export const availableCoins: CoinsMap<CoinOpts> = {
     paymentInfo: {
       paymentCode: 'EIP681b',
       protocolPrefix: { livenet: 'ethereum', testnet: 'ethereum' },
-      ratesApi: 'https://bitpay.com/api/rates/busd',
-      blockExplorerUrls: 'bitpay.com/insight/#/ETH/'
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/busd',
+      blockExplorerUrls: 'etherscan.io/',
+      blockExplorerUrlsTestnet: 'kovan.etherscan.io/'
     },
     feeInfo: {
       feeUnit: 'Gwei',
@@ -213,6 +226,7 @@ export const availableCoins: CoinsMap<CoinOpts> = {
       maxMerchantFee: 'urgent'
     },
     theme: {
+      coinColor: '#f3ba2d',
       backgroundColor: 'rgba(135,206,250,1)',
       gradientBackgroundColor: 'rgba(30,144,255, 0.2)'
     }
@@ -238,8 +252,9 @@ export const availableCoins: CoinsMap<CoinOpts> = {
     paymentInfo: {
       paymentCode: 'EIP681b',
       protocolPrefix: { livenet: 'ethereum', testnet: 'ethereum' },
-      ratesApi: 'https://bitpay.com/api/rates/pax',
-      blockExplorerUrls: 'bitpay.com/insight/#/ETH/'
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/pax',
+      blockExplorerUrls: 'etherscan.io/',
+      blockExplorerUrlsTestnet: 'kovan.etherscan.io/'
     },
     feeInfo: {
       feeUnit: 'Gwei',
@@ -248,6 +263,7 @@ export const availableCoins: CoinsMap<CoinOpts> = {
       maxMerchantFee: 'urgent'
     },
     theme: {
+      coinColor: '#e6f3f9',
       backgroundColor: '#00845d',
       gradientBackgroundColor: '#00845d'
     }
@@ -273,8 +289,9 @@ export const availableCoins: CoinsMap<CoinOpts> = {
     paymentInfo: {
       paymentCode: 'EIP681b',
       protocolPrefix: { livenet: 'ethereum', testnet: 'ethereum' },
-      ratesApi: 'https://bitpay.com/api/rates/usdc',
-      blockExplorerUrls: 'bitpay.com/insight/#/ETH/'
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/usdc',
+      blockExplorerUrls: 'etherscan.io/',
+      blockExplorerUrlsTestnet: 'kovan.etherscan.io/'
     },
     feeInfo: {
       feeUnit: 'Gwei',
@@ -283,6 +300,7 @@ export const availableCoins: CoinsMap<CoinOpts> = {
       maxMerchantFee: 'urgent'
     },
     theme: {
+      coinColor: '#2775ca',
       backgroundColor: '#2775c9',
       gradientBackgroundColor: '#2775c9'
     }
@@ -308,8 +326,9 @@ export const availableCoins: CoinsMap<CoinOpts> = {
     paymentInfo: {
       paymentCode: 'EIP681b',
       protocolPrefix: { livenet: 'ethereum', testnet: 'ethereum' },
-      ratesApi: 'https://bitpay.com/api/rates/gusd',
-      blockExplorerUrls: 'bitpay.com/insight/#/ETH/'
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/gusd',
+      blockExplorerUrls: 'etherscan.io/',
+      blockExplorerUrlsTestnet: 'kovan.etherscan.io/'
     },
     feeInfo: {
       feeUnit: 'Gwei',
@@ -318,8 +337,157 @@ export const availableCoins: CoinsMap<CoinOpts> = {
       maxMerchantFee: 'urgent'
     },
     theme: {
+      coinColor: '#00ddfa',
       backgroundColor: '#00dcfa',
       gradientBackgroundColor: '#00dcfa'
+    }
+  },
+  dai: {
+    name: 'DAI',
+    chain: 'ETH',
+    coin: 'dai',
+    unitInfo: {
+      unitName: 'DAI',
+      unitToSatoshi: 1e18,
+      unitDecimals: 18,
+      unitCode: 'dai'
+    },
+    properties: {
+      hasMultiSig: false,
+      hasMultiSend: false,
+      isUtxo: false,
+      isERCToken: true,
+      isStableCoin: true,
+      singleAddress: true
+    },
+    paymentInfo: {
+      paymentCode: 'EIP681b',
+      protocolPrefix: { livenet: 'ethereum', testnet: 'ethereum' },
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/gusd',
+      blockExplorerUrls: 'etherscan.io/',
+      blockExplorerUrlsTestnet: 'kovan.etherscan.io/'
+    },
+    feeInfo: {
+      feeUnit: 'Gwei',
+      feeUnitAmount: 1e9,
+      blockTime: 0.2,
+      maxMerchantFee: 'urgent'
+    },
+    theme: {
+      coinColor: '#00ddfa', // TODO: change to proper color after beta
+      backgroundColor: '#00dcfa', // TODO: change to proper color after beta
+      gradientBackgroundColor: '#00dcfa' // TODO: change to proper color after beta
+    }
+  },
+  wbtc: {
+    name: 'Wrapped Bitcoin',
+    chain: 'ETH',
+    coin: 'wbtc',
+    unitInfo: {
+      unitName: 'WBTC',
+      unitToSatoshi: 1e8,
+      unitDecimals: 8,
+      unitCode: 'wbtc'
+    },
+    properties: {
+      hasMultiSig: false,
+      hasMultiSend: false,
+      isUtxo: false,
+      isERCToken: true,
+      isStableCoin: true,
+      singleAddress: true
+    },
+    paymentInfo: {
+      paymentCode: 'EIP681b',
+      protocolPrefix: { livenet: 'ethereum', testnet: 'ethereum' },
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/btc',
+      blockExplorerUrls: 'etherscan.io/',
+      blockExplorerUrlsTestnet: 'kovan.etherscan.io/'
+    },
+    feeInfo: {
+      feeUnit: 'Gwei',
+      feeUnitAmount: 1e9,
+      blockTime: 0.2,
+      maxMerchantFee: 'urgent'
+    },
+    theme: {
+      coinColor: '#00ddfa', // TODO: change to proper color after beta
+      backgroundColor: '#00dcfa', // TODO: change to proper color after beta
+      gradientBackgroundColor: '#00dcfa' // TODO: change to proper color after beta
+    }
+  },
+  doge: {
+    name: 'Dogecoin',
+    chain: 'DOGE',
+    coin: 'doge',
+    unitInfo: {
+      unitName: 'DOGE',
+      unitToSatoshi: 1e8,
+      unitDecimals: 8,
+      unitCode: 'doge'
+    },
+    properties: {
+      hasMultiSig: true,
+      hasMultiSend: true,
+      isUtxo: true,
+      isERCToken: false,
+      isStableCoin: false,
+      singleAddress: false
+    },
+    paymentInfo: {
+      paymentCode: 'BIP73',
+      protocolPrefix: { livenet: 'dogecoin', testnet: 'dogecoin' },
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/doge',
+      blockExplorerUrls: 'blockchair.com/',
+      blockExplorerUrlsTestnet: 'sochain.com/'
+    },
+    feeInfo: {
+      feeUnit: 'sat/byte',
+      feeUnitAmount: 1e8,
+      blockTime: 10,
+      maxMerchantFee: 'normal'
+    },
+    theme: {
+      coinColor: '#d8c172',
+      backgroundColor: '#d8c172',
+      gradientBackgroundColor: '#d8c172'
+    }
+  },
+  ltc: {
+    name: 'Litecoin',
+    chain: 'LTC',
+    coin: 'ltc',
+    unitInfo: {
+      unitName: 'LTC',
+      unitToSatoshi: 100000000,
+      unitDecimals: 8,
+      unitCode: 'ltc'
+    },
+    properties: {
+      hasMultiSig: true,
+      hasMultiSend: true,
+      isUtxo: true,
+      isERCToken: false,
+      isStableCoin: false,
+      singleAddress: false
+    },
+    paymentInfo: {
+      paymentCode: 'BIP73',
+      protocolPrefix: { livenet: 'litecoin', testnet: 'litecoin' },
+      ratesApi: 'https://bws.bitpay.com/bws/api/v3/fiatrates/ltc',
+      blockExplorerUrls: 'bitpay.com/insight/#/LTC/mainnet/',
+      blockExplorerUrlsTestnet: 'bitpay.com/insight/#/LTC/testnet/'
+    },
+    feeInfo: {
+      feeUnit: 'sat/byte',
+      feeUnitAmount: 1000,
+      blockTime: 2.5,
+      maxMerchantFee: 'normal'
+    },
+    theme: {
+      coinColor: '#f7931a',
+      backgroundColor: '#f7921a',
+      gradientBackgroundColor: '#f7921a'
     }
   }
 };

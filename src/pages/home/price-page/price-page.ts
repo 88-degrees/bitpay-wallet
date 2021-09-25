@@ -2,88 +2,83 @@ import { Component, ViewChild } from '@angular/core';
 import { NavController, NavParams } from 'ionic-angular';
 import * as _ from 'lodash';
 import * as moment from 'moment';
+import { FormatCurrencyPipe } from '../../../pipes/format-currency';
+
+// Components
 import { Card } from '../../../components/exchange-rates/exchange-rates';
 import { PriceChart } from '../../../components/price-chart/price-chart';
-import { FormatCurrencyPipe } from '../../../pipes/format-currency';
+
+// Pages
+import { AmountPage } from '../../send/amount/amount';
+
+// Providers
 import {
+  AnalyticsProvider,
   ConfigProvider,
-  ExchangeRatesProvider,
   Logger,
   SimplexProvider
 } from '../../../providers';
-import { AmountPage } from '../../send/amount/amount';
+import { DateRanges, RateProvider } from '../../../providers/rate/rate';
 
 @Component({
   selector: 'price-page',
   templateUrl: 'price-page.html'
 })
 export class PricePage {
+  wallet: any;
+  wallets: any[];
   @ViewChild('canvas') canvas: PriceChart;
   private card: Card;
   public activeOption: string = '1D';
   public availableOptions;
   public updateOptions = [
-    { label: '1D', lastDate: 1 },
-    { label: '1W', lastDate: 7 },
-    { label: '1M', lastDate: 31 }
+    { label: '1D', dateRange: DateRanges.Day },
+    { label: '1W', dateRange: DateRanges.Week },
+    { label: '1M', dateRange: DateRanges.Month }
   ];
-  private supportedFiatCodes: string[] = [
-    'USD',
-    'INR',
-    'GBP',
-    'EUR',
-    'CAD',
-    'COP',
-    'NGN',
-    'BRL',
-    'ARS',
-    'AUD'
-  ];
-  public isIsoCodeSupported: boolean;
-  public isoCode: string;
+  public isFiatIsoCodeSupported: boolean;
+  public fiatIsoCode: string;
   public fiatCodes;
   constructor(
     private navCtrl: NavController,
     private navParams: NavParams,
-    private exchangeRatesProvider: ExchangeRatesProvider,
+    private rateProvider: RateProvider,
     private formatCurrencyPipe: FormatCurrencyPipe,
     private configProvider: ConfigProvider,
     private logger: Logger,
-    private simplexProvider: SimplexProvider
+    private simplexProvider: SimplexProvider,
+    private analyticsProvider: AnalyticsProvider
   ) {
     this.card = _.clone(this.navParams.data.card);
-    this.updateValues();
-    this.setIsoCode();
+    this.setFiatIsoCode();
   }
 
   ionViewDidLoad() {
-    this.setPrice();
     this.drawCanvas();
+    // Let the canvas settle
+    setTimeout(() => {
+      this.getPrice(DateRanges.Day);
+    }, 1000);
   }
 
-  public goToBuyCrypto() {
-    this.navCtrl.push(AmountPage, {
-      nextPage: 'SimplexBuyPage',
-      coin: this.card.unitCode,
-      currency: this.isIsoCodeSupported ? this.isoCode : 'USD'
-    });
-  }
-
-  private getPrice(lastDate) {
+  private getPrice(dateRange) {
     this.canvas.loading = true;
-    this.exchangeRatesProvider
-      .getHistoricalRates(this.card.unitCode, this.isoCode, false, lastDate)
-      .subscribe(
-        response => {
-          this.card.historicalRates = response;
-          this.updateValues();
-          this.setPrice();
+    this.rateProvider.fetchHistoricalRates(this.fiatIsoCode, dateRange).then(
+      response => {
+        this.card.historicalRates = response[this.card.unitCode];
+        this.updateValues();
+        this.setPrice();
+        if (this.canvas.chart) {
           this.redrawCanvas();
-        },
-        err => {
-          this.logger.error('Error getting rates:', err);
+        } else {
+          this.canvas.loading = false;
         }
-      );
+      },
+      err => {
+        this.canvas.loading = false;
+        this.logger.error('Error getting rates:', err);
+      }
+    );
   }
 
   private formatDate(date) {
@@ -106,41 +101,42 @@ export class PricePage {
     const minPrice = this.card.historicalRates[
       this.card.historicalRates.length - 1
     ].rate;
-    this.card.averagePriceAmount = price - minPrice;
-    this.card.averagePrice = (this.card.averagePriceAmount * 100) / minPrice;
-    const customPrecision = this.card.unitCode === 'xrp' ? 4 : 2;
+    this.card.totalBalanceChangeAmount = price - minPrice;
+    this.card.totalBalanceChange =
+      (this.card.totalBalanceChangeAmount * 100) / minPrice;
+    const customPrecision =
+      this.card.unitCode === 'xrp' || this.card.unitCode === 'doge' ? 4 : 2;
     document.getElementById(
       'displayPrice'
     ).textContent = `${this.formatCurrencyPipe.transform(
       price,
-      this.isoCode,
+      this.fiatIsoCode,
       customPrecision
     )}`;
     document.getElementById('displayDate').textContent = `${displayDate}`;
     document.getElementById(
       'averagePriceAmount'
     ).textContent = `${this.formatCurrencyPipe.transform(
-      this.card.averagePriceAmount,
-      this.isoCode,
+      this.card.totalBalanceChangeAmount,
+      this.fiatIsoCode,
       customPrecision
     )}`;
     document.getElementById(
       'averagePricePercent'
     ).textContent = `${this.formatCurrencyPipe.transform(
-      this.card.averagePrice,
+      this.card.totalBalanceChange,
       '%',
       2
     )}`;
   }
 
   private redrawCanvas() {
-    this.canvas.loading = false;
     const data = this.card.historicalRates.map(rate => [rate.ts, rate.rate]);
     this.canvas.chart.updateOptions(
       {
         chart: {
           animations: {
-            enabled: true
+            enabled: false
           }
         },
         series: [
@@ -155,9 +151,10 @@ export class PricePage {
         }
       },
       false,
-      true,
-      true
+      false,
+      false
     );
+    this.canvas.loading = false;
   }
 
   private drawCanvas() {
@@ -172,9 +169,9 @@ export class PricePage {
   }
 
   public updateChart(option) {
-    const { label, lastDate } = option;
+    const { label, dateRange } = option;
     this.activeOption = label;
-    this.getPrice(lastDate);
+    this.getPrice(dateRange);
   }
 
   private updateValues() {
@@ -182,16 +179,32 @@ export class PricePage {
     const minPrice = this.card.historicalRates[
       this.card.historicalRates.length - 1
     ].rate;
-    this.card.averagePriceAmount = this.card.currentPrice - minPrice;
-    this.card.averagePrice = (this.card.averagePriceAmount * 100) / minPrice;
+    this.card.totalBalanceChangeAmount = this.card.currentPrice - minPrice;
+    this.card.totalBalanceChange =
+      (this.card.totalBalanceChangeAmount * 100) / minPrice;
   }
 
-  private setIsoCode() {
+  private setFiatIsoCode() {
     this.fiatCodes = this.simplexProvider.getSupportedFiatAltCurrencies();
     const { alternativeIsoCode } = this.configProvider.get().wallet.settings;
-    this.isoCode = this.supportedFiatCodes.includes(alternativeIsoCode)
+    this.fiatIsoCode = this.rateProvider.isAltCurrencyAvailable(
+      alternativeIsoCode
+    )
       ? alternativeIsoCode
       : 'USD';
-    this.isIsoCodeSupported = _.includes(this.fiatCodes, this.isoCode);
+    this.isFiatIsoCodeSupported = _.includes(this.fiatCodes, this.fiatIsoCode);
+  }
+
+  public goToAmountPage(): void {
+    this.analyticsProvider.logEvent('buy_crypto_button_clicked', {
+      from: 'priceChartsPage',
+      coin: this.card.unitCode
+    });
+    this.navCtrl.push(AmountPage, {
+      coin: this.card.unitCode,
+      fromBuyCrypto: true,
+      nextPage: 'CryptoOrderSummaryPage',
+      currency: this.configProvider.get().wallet.settings.alternativeIsoCode
+    });
   }
 }

@@ -1,7 +1,6 @@
 import { TestUtils } from '../../test';
 import { BwcErrorProvider } from '../bwc-error/bwc-error';
 import { ConfigProvider } from '../config/config';
-import { Coin } from '../currency/currency';
 import { FeeProvider } from '../fee/fee';
 import { KeyProvider } from '../key/key';
 import { PersistenceProvider } from '../persistence/persistence';
@@ -89,20 +88,12 @@ describe('Provider: Wallet Provider', () => {
 
     spyOn(feeProvider, 'getFeeLevels').and.returnValue(
       Promise.resolve({
-        levels: {
-          livenet: [
-            {
-              feePerKb: 10000,
-              level: 'normal'
-            }
-          ],
-          testnet: [
-            {
-              feePerKb: 10000,
-              level: 'normal'
-            }
-          ]
-        }
+        levels: [
+          {
+            feePerKb: 10000,
+            level: 'normal'
+          }
+        ]
       })
     );
 
@@ -321,7 +312,7 @@ describe('Provider: Wallet Provider', () => {
       );
 
       const address = walletProvider.getAddressView(
-        Coin.BCH,
+        'bch',
         'testnet',
         'qqfs4tjymy5cs0j4lz78y2lvensl0l42wu80z5jass'
       );
@@ -336,7 +327,7 @@ describe('Provider: Wallet Provider', () => {
       );
 
       const address = walletProvider.getAddressView(
-        Coin.BCH,
+        'bch',
         'livenet',
         'qz8ds306px5n65gffn8u69vvnksfw6huwyjczrvkh3'
       );
@@ -347,7 +338,7 @@ describe('Provider: Wallet Provider', () => {
 
     it("should return the same address if it isn't BCH", () => {
       const address = walletProvider.getAddressView(
-        Coin.BTC,
+        'btc',
         'livenet',
         '3DTdZeycDBaimjuuknVGrG8fxdLbjsAjXN'
       );
@@ -828,21 +819,6 @@ describe('Provider: Wallet Provider', () => {
     });
   });
 
-  describe('Function: recreate', () => {
-    it('Should recreate and change notAuthorized property to false', () => {
-      const wallet: WalletMock = new WalletMock();
-
-      walletProvider
-        .recreate(wallet)
-        .then(() => {
-          expect(wallet.notAuthorized).toBeFalsy();
-        })
-        .catch(err => {
-          expect(err).toBeUndefined();
-        });
-    });
-  });
-
   describe('Function: startScan', () => {
     it('Should start scanning', () => {
       const wallet: WalletMock = new WalletMock();
@@ -1165,7 +1141,8 @@ describe('Provider: Wallet Provider', () => {
       const keys = walletProvider.getKeysWithPassword(wallet, pass);
       expect(keys).toEqual({
         mnemonic: 'mom mom mom mom mom mom mom mom mom mom mom mom',
-        xPrivKey: 'xPrivKey1'
+        xPrivKey: 'xPrivKey1',
+        mnemonicHasPassphrase: false
       });
     });
   });
@@ -1205,7 +1182,8 @@ describe('Provider: Wallet Provider', () => {
         .then(keys => {
           expect(keys).toEqual({
             mnemonic: 'mom mom mom mom mom mom mom mom mom mom mom mom',
-            xPrivKey: 'xPrivKey1'
+            xPrivKey: 'xPrivKey1',
+            mnemonicHasPassphrase: false
           });
         })
         .catch(err => {
@@ -1232,21 +1210,21 @@ describe('Provider: Wallet Provider', () => {
 
   describe('Function: getProtocolHandler', () => {
     it('Should return bitcoincash if coin is bch and network is livenet', () => {
-      const coin = Coin.BCH;
+      const coin = 'bch';
       const network = 'livenet';
       const protocol = walletProvider.getProtocolHandler(coin, network);
       expect(protocol).toEqual('bitcoincash');
     });
 
     it('Should return bchtest if coin is bch and network is testnet', () => {
-      const coin = Coin.BCH;
+      const coin = 'bch';
       const network = 'testnet';
       const protocol = walletProvider.getProtocolHandler(coin, network);
       expect(protocol).toEqual('bchtest');
     });
 
     it('Should return bitcoin if coin is btc', () => {
-      const coin = Coin.BTC;
+      const coin = 'btc';
       const protocol = walletProvider.getProtocolHandler(coin);
       expect(protocol).toEqual('bitcoin');
     });

@@ -11,7 +11,10 @@ import * as _ from 'lodash';
 import { Subscription } from 'rxjs';
 
 // providers
-import { AddressBookProvider } from '../../../providers/address-book/address-book';
+import {
+  AddressBookProvider,
+  Contact
+} from '../../../providers/address-book/address-book';
 import { BwcErrorProvider } from '../../../providers/bwc-error/bwc-error';
 import { ErrorsProvider } from '../../../providers/errors/errors';
 import { Logger } from '../../../providers/logger/logger';
@@ -31,7 +34,7 @@ import { FinishModalPage } from '../../finish/finish';
 export class ProposalsNotificationsPage {
   @ViewChild('slideButton')
   slideButton;
-  public addressbook;
+  public addressbook: Contact[];
   public allTxps: any[];
   public txpsPending: any[];
   public txpsAccepted: any[];
@@ -46,6 +49,7 @@ export class ProposalsNotificationsPage {
   private onPauseSubscription: Subscription;
   private isElectron: boolean;
   private walletId: string;
+  private multisigContractAddress: string;
 
   constructor(
     private plt: Platform,
@@ -67,6 +71,7 @@ export class ProposalsNotificationsPage {
     this.zone = new NgZone({ enableLongStackTrace: false });
     this.isElectron = this.platformProvider.isElectron;
     this.walletId = this.navParams.data.walletId;
+    this.multisigContractAddress = this.navParams.data.multisigContractAddress;
     this.isCordova = this.platformProvider.isCordova;
     this.buttonText = this.translate.instant('Sign selected proposals');
 
@@ -127,9 +132,17 @@ export class ProposalsNotificationsPage {
 
   private updateAddressBook(): void {
     this.addressBookProvider
-      .list()
+      .list('livenet')
       .then(ab => {
-        this.addressbook = ab || {};
+        if (ab) this.addressbook.push(...ab);
+      })
+      .catch(err => {
+        this.logger.error(err);
+      });
+    this.addressBookProvider
+      .list('testnet')
+      .then(ab => {
+        if (ab) this.addressbook.push(...ab);
       })
       .catch(err => {
         this.logger.error(err);
@@ -153,6 +166,12 @@ export class ProposalsNotificationsPage {
           if (this.walletId) {
             txpsData.txps = _.filter(txpsData.txps, txps => {
               return txps.walletId == this.walletId;
+            });
+          } else if (this.multisigContractAddress) {
+            txpsData.txps = _.filter(txpsData.txps, txps => {
+              return (
+                txps.multisigContractAddress == this.multisigContractAddress
+              );
             });
           }
 
@@ -198,7 +217,7 @@ export class ProposalsNotificationsPage {
         copayerId: txp.wallet.copayerId
       });
 
-      if (!action && txp.status == 'pending') {
+      if ((!action || action.type === 'failed') && txp.status == 'pending') {
         txp.pendingForUs = true;
       }
 
@@ -236,7 +255,8 @@ export class ProposalsNotificationsPage {
         walletId: txpsPerWallet[0],
         canSign: txpsPerWallet[1][0].wallet.canSign || false,
         txps: txpsPerWallet[1],
-        multipleSignAvailable: txpToBeSigned > 1
+        multipleSignAvailable:
+          txpToBeSigned > 1 && !txpsPerWallet[1][0].multisigContractAddress
       });
     });
     return txpsByWallet;
@@ -285,10 +305,10 @@ export class ProposalsNotificationsPage {
               : this.translate.instant('{{txpsSuccess}} proposal signed'),
             { txpsSuccess: count.success }
           );
-          this.openModal(finishText, null, 'success');
+          this.openModal(finishText, 'success');
         }
         // own TxActions  are not triggered?
-        this.events.publish('Local/TxAction', wallet.walletId);
+        this.events.publish('Local/WalletFocus', wallet.walletId);
       })
       .catch(err => {
         this.logger.error('Sign multiple transaction proposals failed: ', err);
@@ -352,12 +372,11 @@ export class ProposalsNotificationsPage {
     this.walletIdSelectedToSign = null;
   }
 
-  private openModal(finishText, finishComment, cssClass): void {
+  private openModal(finishText, cssClass): void {
     const modal = this.modalCtrl.create(
       FinishModalPage,
       {
         finishText,
-        finishComment,
         cssClass
       },
       { showBackdrop: true, enableBackdropDismiss: false }

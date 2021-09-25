@@ -3,28 +3,31 @@ import { TranslateService } from '@ngx-translate/core';
 import { ActionSheetController, NavController, NavParams } from 'ionic-angular';
 
 import * as _ from 'lodash';
+import * as moment from 'moment';
 
 // providers
+// pages
+import { IABCardProvider, PersistenceProvider } from '../../../../providers';
 import { BitPayAccountProvider } from '../../../../providers/bitpay-account/bitpay-account';
 import { BitPayCardProvider } from '../../../../providers/bitpay-card/bitpay-card';
 import { ExternalLinkProvider } from '../../../../providers/external-link/external-link';
+import { Network } from '../../../../providers/persistence/persistence';
 import { PopupProvider } from '../../../../providers/popup/popup';
-
-// pages
-import {
-  IABCardProvider,
-  PersistenceProvider,
-  ProfileProvider
-} from '../../../../providers';
+import { ScanProvider } from '../../../../providers/scan/scan';
+import { ThemeProvider } from '../../../../providers/theme/theme';
 import { BitPayCardPage } from '../bitpay-card';
 
 @Component({
   selector: 'page-bitpay-card-intro',
-  templateUrl: 'bitpay-card-intro.html'
+  templateUrl: 'bitpay-card-intro.html',
+  providers: [ScanProvider]
 })
 export class BitPayCardIntroPage {
+  private scannerHasPermission: boolean;
   public accounts;
   public cardExperimentEnabled: boolean;
+  public ready: boolean;
+  public bitPayIdConnected: boolean;
   constructor(
     private translate: TranslateService,
     private actionSheetCtrl: ActionSheetController,
@@ -36,8 +39,11 @@ export class BitPayCardIntroPage {
     private externalLinkProvider: ExternalLinkProvider,
     private persistenceProvider: PersistenceProvider,
     private iabCardProvider: IABCardProvider,
-    private profileProvider: ProfileProvider
+    private scanProvider: ScanProvider,
+    private themeProvider: ThemeProvider
   ) {
+    this.scannerHasPermission = false;
+    this.updateCapabilities();
     this.persistenceProvider.getCardExperimentFlag().then(status => {
       this.cardExperimentEnabled = status === 'enabled';
     });
@@ -102,10 +108,32 @@ export class BitPayCardIntroPage {
       }
       this.accounts = accounts;
     });
+
+    if (!this.scannerHasPermission) {
+      this.authorizeCamera();
+    }
   }
 
   ionViewDidEnter() {
+    this.persistenceProvider
+      .getBitPayIdPairingToken(Network.livenet)
+      .then(token => (this.bitPayIdConnected = !!token));
+
+    this.iabCardProvider.updateWalletStatus();
     this.bitPayCardProvider.logEvent('legacycard_view_setup', {});
+    this.ready = true;
+  }
+
+  private updateCapabilities(): void {
+    const capabilities = this.scanProvider.getCapabilities();
+    this.scannerHasPermission = capabilities.hasPermission;
+  }
+
+  private authorizeCamera(): void {
+    this.scanProvider
+      .initialize() // prompt for authorization by initializing scanner
+      .then(() => this.scanProvider.pausePreview()) // release camera resources from scanner
+      .then(() => this.updateCapabilities()); // update component state
   }
 
   public openExchangeRates() {
@@ -118,35 +146,29 @@ export class BitPayCardIntroPage {
     this.externalLinkProvider.open(url);
   }
 
-  public async orderBitPayCard() {
-    const hasWalletWithFunds = this.profileProvider.hasWalletWithFunds(
-      12,
-      'USD'
-    );
+  public async orderBitPayCard(path?: 'login' | 'createAccount') {
+    let url = `https://bitpay.com/wallet-card?context=${path}`;
 
-    const hasFirstView = await this.iabCardProvider.hasFirstView();
-
-    if (!hasWalletWithFunds && !hasFirstView) {
-      this.iabCardProvider.show();
-      this.iabCardProvider.sendMessage(
-        {
-          message: 'needFunds'
-        },
-        () => {}
-      );
-      return;
+    if (this.themeProvider.isDarkModeEnabled()) {
+      url += '&darkMode=true';
     }
 
-    this.iabCardProvider.show();
-    this.iabCardProvider.sendMessage(
-      {
-        message: 'orderCard'
-      },
-      () => {}
-    );
-    setTimeout(() => {
-      this.navCtrl.pop();
-    }, 300);
+    if (this.bitPayIdConnected) {
+      const user = await this.persistenceProvider.getBitPayIdUserInfo(
+        Network.livenet
+      );
+      url += `&email=${user.email}`;
+    }
+
+    const now = moment().unix();
+    this.persistenceProvider.setBitPayCardOrderStarted(now);
+
+    this.iabCardProvider.loadingWrapper(() => {
+      this.externalLinkProvider.open(url);
+      setTimeout(() => {
+        this.navCtrl.pop();
+      }, 300);
+    });
   }
 
   public connectBitPayCard() {
