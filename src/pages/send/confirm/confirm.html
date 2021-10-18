@@ -10,8 +10,8 @@
         A transaction using your delayed transaction inputs will be sent to your own wallet with a higher miner fee to speed up the last confirmation time.
         <br>
       </div>
-      <div *ngIf="wallet.coin === 'eth'" label-tip-body translate>
-        In order to speed up the confirmation of your ETH transaction, the original transaction will be replaced by a new one that uses a higher miner fee.
+      <div *ngIf="wallet.coin === 'eth' || isERCToken" label-tip-body translate>
+        In order to speed up the confirmation of your transaction, the original transaction will be replaced by a new one that uses a higher miner fee.
         <br>
       </div>
     </label-tip>
@@ -47,7 +47,7 @@
                 <img [src]="currencyProvider.getLogoURI(coin)" (error)="currencyProvider.defaultLogoURI(img)" #img/>
               </ion-icon>
               <ion-icon *ngIf="walletConnectRequestId && !walletConnectIsApproveRequest" item-start>
-                <img class="wc-img-sm" [src]="dappImgSrc" (error)="setDappImgSrc()" width="20">
+                <img class="wc-img-sm" [src]="walletConnectPeerMeta?.icons[0]" (error)="setDefaultImgSrc(img)" #img width="20">
               </ion-icon>
               <ion-icon *ngIf="walletConnectRequestId && walletConnectIsApproveRequest" item-start>
                 <img class="wc-img-sm" [src]="walletConnectTokenInfo.logoURI" (error)="currencyProvider.defaultLogoURI(img)" #img width="20">
@@ -275,6 +275,13 @@
         </ion-label>
         <ion-note class="main-note" item-end>{{tx.nonce}}</ion-note>
       </ion-item>
+
+      <label-tip type="warn" *ngIf="pendingConfirmationEthTxs > 0 && !isSpeedUpTx">
+        <span label-tip-title translate>Waiting for confirmation</span>
+        <div label-tip-body translate>
+          There is a pending transaction with a lower account nonce. This next transaction can only be executed after confirmation of the earlier transaction.
+        </div>
+      </label-tip>
 
       <div class="line-divider"></div>
 

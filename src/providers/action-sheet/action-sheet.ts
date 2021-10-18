@@ -59,6 +59,7 @@ export type InfoSheetType =
   | 'bch-legacy-warning-2'
   | 'network-coin-warning'
   | 'speed-up-tx'
+  | 'speed-up-eth-tx'
   | 'speed-up-notice'
   | 'unconfirmed-inputs'
   | 'rbf-tx'
@@ -85,7 +86,8 @@ export type InfoSheetType =
   | 'exchange-crypto-disclaimer'
   | 'join-wallet-warning'
   | 'token-added'
-  | 'pairing-required';
+  | 'pairing-required'
+  | '1inch-disabled-warning';
 
 export type OptionsSheetType =
   | 'wallet-options'

@@ -88,6 +88,8 @@ export class ConfirmPage {
   public merchantFeeLabel: string;
   public totalAmountStr: string;
   public totalAmount;
+  public pendingConfirmationEthTxs: number;
+
   // Config Related values
   public config;
 
@@ -128,8 +130,6 @@ export class ConfirmPage {
   public walletConnectTokenInfo;
   public walletConnectPeerMeta;
   public walletConnectIsApproveRequest;
-  public defaultImgSrc: string = 'assets/img/wallet-connect/icon-dapp.svg';
-  public dappImgSrc: string;
 
   // // Card flags for zen desk chat support
   // private isCardPurchase: boolean;
@@ -299,13 +299,14 @@ export class ConfirmPage {
       nonce: this.navParams.data.nonce
     };
 
+    this.isERCToken = this.currencyProvider.isERCToken(this.tx.coin);
+
     this.tx.sendMax = this.navParams.data.useSendMax ? true : false;
 
     this.tx.amount =
       this.navParams.data.useSendMax && this.shouldUseSendMax()
         ? 0
-        : this.tx.coin == 'eth' ||
-          this.currencyProvider.isERCToken(this.tx.coin)
+        : this.tx.coin == 'eth' || this.isERCToken
         ? Number(amount)
         : parseInt(amount, 10);
 
@@ -318,7 +319,9 @@ export class ConfirmPage {
     } else if (this.isSpeedUpTx) {
       this.usingCustomFee = true;
       this.tx.feeLevel =
-        this.navParams.data.coin == 'eth' ? 'priority' : 'custom';
+        this.navParams.data.coin == 'eth' || this.isERCToken
+          ? 'priority'
+          : 'custom';
     } else {
       this.tx.feeLevel = this.feeProvider.getCoinCurrentFeeLevel(this.tx.coin);
     }
@@ -470,12 +473,15 @@ export class ConfirmPage {
       return Promise.resolve();
     }
 
-    this.wallets = this.profileProvider.getWallets({
+    const opts = {
       onlyComplete: true,
       hasFunds: true,
       network,
-      coin
-    });
+      coin,
+      noEthMultisig: this.tx.paypro ? true : false
+    };
+
+    this.wallets = this.profileProvider.getWallets(opts);
 
     this.coinbaseAccounts =
       this.showCoinbase && network === 'livenet'
@@ -516,6 +522,15 @@ export class ConfirmPage {
       this.wallet.credentials.multisigEthInfo &&
       this.wallet.credentials.multisigEthInfo.multisigContractAddress
     ) {
+      if (this.tx.paypro) {
+        const msg = this.translate.instant(
+          'Invoice payments are not available for ethereum multisig wallets'
+        );
+        setTimeout(() => {
+          this.handleError(msg, true);
+        }, 100);
+        return;
+      }
       this.tx.multisigContractAddress = this.wallet.credentials.multisigEthInfo.multisigContractAddress;
     }
 
@@ -834,7 +849,7 @@ export class ConfirmPage {
           }
           tx.speedUpTxInfo = speedUpTxInfo;
         }
-        if (wallet.coin === 'eth') {
+        if (wallet.coin === 'eth' || this.isERCToken) {
           tx.speedUpTxInfo.input = [];
           tx.amount = tx.speedUpTxInfo.amount;
           this.tx.amount = tx.amount;
@@ -903,7 +918,6 @@ export class ConfirmPage {
     return new Promise((resolve, reject) => {
       this.getTxp(_.clone(tx), wallet, opts.dryRun)
         .then(async txp => {
-          this.isERCToken = this.currencyProvider.isERCToken(tx.coin);
           if (this.isERCToken) {
             const chain = this.getChain(tx.coin);
             const fiatOfAmount = this.rateProvider.toFiat(
@@ -957,7 +971,8 @@ export class ConfirmPage {
           ) {
             const nonce = await this.walletProvider.getNonce(
               wallet,
-              tx.txp[wallet.id].from
+              txp.chain ? txp.chain.toLowerCase() : txp.coin,
+              txp.from
             );
             this.tx.nonce = tx.txp[wallet.id].nonce = nonce;
           }
@@ -1327,21 +1342,50 @@ export class ConfirmPage {
             );
             return reject(err);
           }
-
           txp.from = address;
-          this.walletProvider
-            .createTx(wallet, txp)
-            .then(ctxp => {
-              return resolve(ctxp);
-            })
-            .catch(err => {
-              return reject(err);
-            });
+          this.setEthAddressNonce(this.wallet, txp).then(() => {
+            this.walletProvider
+              .createTx(wallet, txp)
+              .then(ctxp => {
+                return resolve(ctxp);
+              })
+              .catch(err => {
+                return reject(err);
+              });
+          });
         })
         .catch(err => {
           return reject(err);
         });
     });
+  }
+
+  private async setEthAddressNonce(wallet, txp) {
+    try {
+      if ((txp.chain && txp.chain.toLowerCase() !== 'eth') || this.isSpeedUpTx)
+        return Promise.resolve();
+
+      const nonce = await this.walletProvider.getNonce(
+        wallet,
+        txp.chain ? txp.chain.toLowerCase() : txp.coin,
+        txp.from
+      );
+
+      this.pendingConfirmationEthTxs = 0;
+      for (let tx of wallet.completeHistory) {
+        if (tx.confirmations === 0) {
+          this.pendingConfirmationEthTxs = this.pendingConfirmationEthTxs + 1;
+        } else break;
+      }
+
+      txp.nonce = this.tx.nonce = wallet.updatedNonce
+        ? wallet.updatedNonce + 1
+        : nonce + this.pendingConfirmationEthTxs;
+      return Promise.resolve();
+    } catch (error) {
+      this.logger.warn('Could not get address nonce', error.message);
+      return Promise.resolve();
+    }
   }
 
   private instantiateMultisigContract: any = async (txp, n?: number) => {
@@ -1498,7 +1542,7 @@ export class ConfirmPage {
         fee,
         feeAlternative,
         coin,
-        isERCToken: this.currencyProvider.isERCToken(coin),
+        isERCToken: this.isERCToken,
         canChooseFeeLevel
       }
     );
@@ -1661,6 +1705,18 @@ export class ConfirmPage {
 
         if (txp.payProUrl && txp.payProUrl.includes('redir=wc')) {
           redir = 'wc';
+        }
+
+        // update eth wallet nonce
+        if (
+          txp.chain &&
+          txp.chain.toLowerCase() == 'eth' &&
+          !this.isSpeedUpTx
+        ) {
+          this.profileProvider.updateEthWalletNonce(
+            wallet.credentials.walletId,
+            txp.nonce
+          );
         }
 
         if (this.navParams.data.isEthMultisigInstantiation) {
@@ -2041,15 +2097,9 @@ export class ConfirmPage {
     this.onFeeModalDismiss(data);
   }
 
-  public setDappImgSrc(useDefault?: boolean) {
-    this.dappImgSrc =
-      this.walletConnectPeerMeta &&
-      this.walletConnectPeerMeta.icons &&
-      !useDefault
-        ? this.walletConnectPeerMeta.icons[1]
-          ? this.walletConnectPeerMeta.icons[1]
-          : this.walletConnectPeerMeta.icons[0]
-        : this.defaultImgSrc;
+  public setDefaultImgSrc(img) {
+    img.onerror = null;
+    img.src = 'assets/img/wallet-connect/icon-dapp.svg';
   }
 
   public rejectRequest(): void {

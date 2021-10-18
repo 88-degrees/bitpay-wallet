@@ -2107,7 +2107,17 @@ export class ProfileProvider {
       });
     }
 
+    if (opts.noEthMultisig) {
+      ret = _.filter(ret, w => {
+        return !(w.credentials.coin == 'eth' && w.credentials.n > 1);
+      });
+    }
+
     return _.sortBy(ret, 'order');
+  }
+
+  public async updateEthWalletNonce(walletId, nonce: number) {
+    this.wallet[walletId].updatedNonce = nonce;
   }
 
   public toggleHideBalanceFlag(walletId: string): void {
