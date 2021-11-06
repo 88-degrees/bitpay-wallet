@@ -90,6 +90,8 @@ export class ConfirmPage {
   public totalAmount;
   public pendingConfirmationEthTxs: number;
 
+  public showCustomizeNonce: boolean;
+
   // Config Related values
   public config;
 
@@ -117,8 +119,10 @@ export class ConfirmPage {
   public minAllowedGasLimit: number;
   public editGasPrice: boolean = false;
   public editGasLimit: boolean = false;
+  public editNonce: boolean = false;
   public customGasPrice: number;
   public customGasLimit: number;
+  public customNonce: number;
 
   public merchantName: string;
   public itemizedDetails;
@@ -200,6 +204,8 @@ export class ConfirmPage {
     // this.isCardPurchase =
     //   this.navParams.data.payProUrl &&
     //   this.navParams.data.payProUrl.includes('redir=wc');
+    this.showCustomizeNonce =
+      this.config.wallet.showCustomizeNonce && !this.navParams.data.paypro;
   }
 
   ngOnInit() {
@@ -369,16 +375,24 @@ export class ConfirmPage {
       invoiceId,
       network
     );
+
+    if (fetchData) {
+      await this.getItemizedDetails(invoiceId);
+      return;
+    }
+
     const result = await this.bitpayIdProvider.unlockInvoice(invoiceId);
 
-    if (result === 'unlockSuccess' || fetchData) {
-      const invoiceData = await this.invoiceProvider.getBitPayInvoice(
-        invoiceId
-      );
-      const { merchantName, itemizedDetails } = invoiceData;
-      this.itemizedDetails = itemizedDetails;
-      this.merchantName = merchantName;
+    if (result === 'unlockSuccess') {
+      await this.getItemizedDetails(invoiceId);
     }
+  }
+
+  private async getItemizedDetails(invoiceId: string) {
+    const invoiceData = await this.invoiceProvider.getBitPayInvoice(invoiceId);
+    const { merchantName, itemizedDetails } = invoiceData;
+    this.itemizedDetails = itemizedDetails;
+    this.merchantName = merchantName;
   }
 
   private setTitle(): void {
@@ -841,6 +855,11 @@ export class ConfirmPage {
         if (speedUpTxInfo) {
           this.logger.debug('Speed Up info', speedUpTxInfo);
 
+          if (wallet.coin === 'btc') {
+            const feeRate = speedUpTxInfo.feeRate;
+            tx.feeRate = feeRate.substr(0, feeRate.indexOf(' ')) * 1000;
+          }
+
           if (speedUpTxInfo.amount <= 0) {
             this.showErrorInfoSheet(
               this.translate.instant('Not enough funds for fee')
@@ -956,28 +975,13 @@ export class ConfirmPage {
             this.customGasLimit = this.tx.txp[wallet.id].gasLimit;
             if (!this.minAllowedGasLimit)
               this.minAllowedGasLimit = this.tx.txp[wallet.id].gasLimit;
+            this.customNonce = this.tx.txp[wallet.id].nonce;
           }
 
           if (txp.feeTooHigh && txp.amount !== 0) {
             this.showHighFeeSheet();
           }
 
-          tx.txp[wallet.id] = txp;
-
-          if (
-            !this.tx.nonce &&
-            this.isSpeedUpTx &&
-            this.wallet.coin === 'eth'
-          ) {
-            const nonce = await this.walletProvider.getNonce(
-              wallet,
-              txp.chain ? txp.chain.toLowerCase() : txp.coin,
-              txp.from
-            );
-            this.tx.nonce = tx.txp[wallet.id].nonce = nonce;
-          }
-
-          this.tx = tx;
           this.logger.debug(
             'Confirm. TX Fully Updated for wallet:' +
               wallet.id +
@@ -1118,6 +1122,7 @@ export class ConfirmPage {
       // set opts.coin to wallet.coin
       txp.coin = wallet.coin;
       txp.chain = this.currencyProvider.getChain(txp.coin);
+      txp.nonce = tx.nonce;
 
       if (this.fromMultiSend) {
         txp.outputs = [];
@@ -1362,7 +1367,11 @@ export class ConfirmPage {
 
   private async setEthAddressNonce(wallet, txp) {
     try {
-      if ((txp.chain && txp.chain.toLowerCase() !== 'eth') || this.isSpeedUpTx)
+      if (
+        (txp.chain && txp.chain.toLowerCase() !== 'eth') ||
+        this.isSpeedUpTx ||
+        this.customNonce
+      )
         return Promise.resolve();
 
       const nonce = await this.walletProvider.getNonce(
@@ -1506,6 +1515,8 @@ export class ConfirmPage {
   }
 
   private showInsufficientFundsInfoSheet(): void {
+    this.logger.warn('ERROR: Insufficient funds for fee');
+
     const insufficientFundsInfoSheet = this.actionSheetProvider.createInfoSheet(
       'insufficient-funds'
     );
@@ -1527,6 +1538,10 @@ export class ConfirmPage {
     coin,
     exit
   ): void {
+    this.logger.warn(
+      `ERROR: Insufficient funds for fee. Required fee: ${fee}. Fee Alternative: ${feeAlternative}. Fee level: ${feeLevel}. Coin: ${coin}`
+    );
+
     const canChooseFeeLevel =
       coin !== 'bch' &&
       coin !== 'xrp' &&
@@ -1850,17 +1865,16 @@ export class ConfirmPage {
       this.tx.coin === 'xrp' ||
       this.tx.coin === 'doge' ||
       this.tx.coin === 'ltc' ||
-      this.usingMerchantFee ||
-      this.tx.speedUpTxInfo
+      this.usingMerchantFee
     )
       return;
-
     const txObject = {
       network: this.tx.network,
       coin: this.tx.coin,
       feeLevel: this.tx.feeLevel,
       customFeePerKB: this.usingCustomFee ? this.tx.feeRate : undefined,
-      feePerSatByte: this.usingCustomFee ? this.tx.feeRate / 1000 : undefined
+      feePerSatByte: this.usingCustomFee ? this.tx.feeRate / 1000 : undefined,
+      isSpeedUpTx: this.isSpeedUpTx
     };
 
     const chooseFeeLevelModal = this.modalCtrl.create(
@@ -2095,6 +2109,19 @@ export class ConfirmPage {
       customFeePerKB: this.tx.txp[this.wallet.id].gasPrice
     };
     this.onFeeModalDismiss(data);
+  }
+
+  public setCustomizeNonce(): void {
+    this.editNonce = !this.editNonce;
+    this.tx.nonce = this.tx.txp[this.wallet.id].nonce = Number(
+      this.customNonce
+    );
+    this.updateTx(this.tx, this.wallet, {
+      clearCache: true,
+      dryRun: true
+    }).catch(err => {
+      this.handleError(err);
+    });
   }
 
   public setDefaultImgSrc(img) {
